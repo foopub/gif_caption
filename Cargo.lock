@@ -453,6 +453,9 @@ version = "0.1.0"
 dependencies = [
  "fontdue",
  "gif",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
  "yew",
 ]
 

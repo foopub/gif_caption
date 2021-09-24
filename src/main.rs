@@ -1,10 +1,18 @@
-#![allow(dead_code)]
-
+use js_sys::Uint8Array;
+use wasm_bindgen::JsValue;
 use yew::services::reader::{File, FileData, ReaderService, ReaderTask};
+use yew::web_sys::{Blob, Url, BlobPropertyBag};
 use yew::{html, ChangeData, Component, ComponentLink, Html, InputData, ShouldRender};
 
-type FileName = String;
-type Chunks = bool;
+pub fn caption(name: &String, bytes: &Vec<u8>, caption: &String) -> Blob {
+    let js_uint_arr = Uint8Array::from(bytes.as_slice());
+    //js_intarr = Int8Array::copy_from(i8::from_ne_bytes(bytes));
+    //let js_bytes = bytes.iter().map(|x| JsValue::from(*x));
+    let blob = Blob::from(JsValue::from(js_uint_arr));
+    return blob;
+}
+
+//mod gif_processor;
 
 pub enum Msg {
     File(File),
@@ -17,9 +25,11 @@ pub enum Msg {
 
 pub struct Model {
     link: ComponentLink<Model>,
-    file: FileData,
+    filedata: FileData,
     text: String,
     pending: Vec<ReaderTask>, // no way to create default ReaderTask
+    result: Vec<Blob>,
+    url: String,
 }
 
 impl Component for Model {
@@ -29,12 +39,14 @@ impl Component for Model {
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
         Self {
             link,
-            file: FileData {
+            filedata: FileData {
                 name: String::new(),
                 content: Vec::new(),
             }, // surely there's a better way???
             text: String::default(),
             pending: Vec::with_capacity(1),
+            result: Vec::with_capacity(1),
+            url: String::default(),
         }
     }
 
@@ -55,12 +67,29 @@ impl Component for Model {
                 true
             }
             Msg::Loaded(filedata) => {
-                self.file = filedata;
+                self.filedata = filedata;
                 self.pending.clear();
                 true
             }
-            Msg::Start => true,
-            Msg::Complete => true,
+            Msg::Start => {
+                use std::convert::TryInto;
+                //gif_processor::caption(&self.filedata.name, &self.filedata.content, &self.text);
+                let js_uint_arr = Uint8Array::new_with_length(self.filedata.content.len().try_into().unwrap());
+                js_uint_arr.copy_from(self.filedata.content.as_slice());
+                //self.url = js_uint_arr.to_string().into();
+                let js_val: JsValue = js_uint_arr.into();
+                let blob = Blob::new_with_u8_array_sequence_and_options(
+                    &js_val,
+                    BlobPropertyBag::new().type_("image/gif")).unwrap();
+                self.result.push(blob);
+                self.link.callback(|_| Msg::Complete).emit(());
+                true
+            }
+            Msg::Complete => {
+                let blob = &self.result[0];
+                self.url = Url::create_object_url_with_blob(blob).unwrap();
+                true
+            }
             Msg::NoOp => true,
         }
     }
@@ -73,7 +102,7 @@ impl Component for Model {
         html! {
             <div>
                 <form>
-                    <p>{ "Upload gif" }</p>
+                    <label>{ "Upload gif" }</label>
                     <input
                         type="file"
                         onchange=self.link.callback(move |value| {
@@ -94,9 +123,10 @@ impl Component for Model {
                         type="text" id="caption" name="caption"
                         oninput=self.link.callback(|e: InputData| Msg::Text(e.value))/>
                     <input
-                        type="submit" value="Submit"
+                        type="button" value="Submit"
                         onclick=self.link.callback(|_| Msg::Start)/>
                 </form>
+                <img src={ format!{"{}", self.url} } />
             </div>
         }
     }
