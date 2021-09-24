@@ -1,18 +1,10 @@
-use js_sys::Uint8Array;
-use wasm_bindgen::JsValue;
+use gloo_file::Blob;
 use yew::services::reader::{File, FileData, ReaderService, ReaderTask};
-use yew::web_sys::{Blob, Url, BlobPropertyBag};
+use yew::services::ConsoleService;
+use yew::web_sys::Url;
 use yew::{html, ChangeData, Component, ComponentLink, Html, InputData, ShouldRender};
 
-pub fn caption(name: &String, bytes: &Vec<u8>, caption: &String) -> Blob {
-    let js_uint_arr = Uint8Array::from(bytes.as_slice());
-    //js_intarr = Int8Array::copy_from(i8::from_ne_bytes(bytes));
-    //let js_bytes = bytes.iter().map(|x| JsValue::from(*x));
-    let blob = Blob::from(JsValue::from(js_uint_arr));
-    return blob;
-}
-
-//mod gif_processor;
+mod gif_processor;
 
 pub enum Msg {
     File(File),
@@ -54,6 +46,9 @@ impl Component for Model {
         match msg {
             Msg::File(file) => {
                 self.pending.clear();
+                ConsoleService::log(format!("File size: {}", file.size()).as_str());
+                let blob: Blob = file.clone().into();
+                self.url = Url::create_object_url_with_blob(blob.as_ref()).unwrap();
                 let task = ReaderService::read_file(
                     file,
                     self.link.callback(move |filedata| Msg::Loaded(filedata)),
@@ -72,22 +67,19 @@ impl Component for Model {
                 true
             }
             Msg::Start => {
-                use std::convert::TryInto;
-                //gif_processor::caption(&self.filedata.name, &self.filedata.content, &self.text);
-                let js_uint_arr = Uint8Array::new_with_length(self.filedata.content.len().try_into().unwrap());
-                js_uint_arr.copy_from(self.filedata.content.as_slice());
-                //self.url = js_uint_arr.to_string().into();
-                let js_val: JsValue = js_uint_arr.into();
-                let blob = Blob::new_with_u8_array_sequence_and_options(
-                    &js_val,
-                    BlobPropertyBag::new().type_("image/gif")).unwrap();
+                self.result.clear();
+                let processed =
+                    gif_processor::caption(&self.filedata.name, &self.filedata.content, &self.text);
+                let blob =
+                    Blob::new_with_options(processed.as_slice(), Some("image/gif"));
                 self.result.push(blob);
                 self.link.callback(|_| Msg::Complete).emit(());
                 true
             }
             Msg::Complete => {
+                ConsoleService::log("Done");
                 let blob = &self.result[0];
-                self.url = Url::create_object_url_with_blob(blob).unwrap();
+                self.url = Url::create_object_url_with_blob(blob.as_ref()).unwrap();
                 true
             }
             Msg::NoOp => true,
@@ -101,32 +93,39 @@ impl Component for Model {
     fn view(&self) -> Html {
         html! {
             <div>
-                <form>
-                    <label>{ "Upload gif" }</label>
-                    <input
-                        type="file"
-                        onchange=self.link.callback(move |value| {
-                            if let ChangeData::Files(files) = value{
+            <form>
+                <label>{ "Upload gif" }</label>
+                <input
+                    type="file"
+                    onchange=self.link.callback(move |value| {
+                        if let ChangeData::Files(files) = value{
+                            //panics if cancel
+                            if files.length() != 0 {
                                 let result = files.item(0).unwrap();
                                 if result.type_() == "image/gif" {
                                     Msg::File(result)
                                 } else {
-                                    Msg::NoOp //add error message here
+                                    ConsoleService::log("Wrong file type");
+                                    Msg::NoOp
                                 }
                             } else {
+                                // clicked cancel
                                 Msg::NoOp
                             }
-                        })
-                    />
-                    <label>{ "Caption" }</label>
-                    <input
-                        type="text" id="caption" name="caption"
-                        oninput=self.link.callback(|e: InputData| Msg::Text(e.value))/>
-                    <input
-                        type="button" value="Submit"
-                        onclick=self.link.callback(|_| Msg::Start)/>
-                </form>
-                <img src={ format!{"{}", self.url} } />
+                        } else  {
+                            Msg::NoOp
+                        }
+                    })
+                />
+                <label>{ "Caption" }</label>
+                <input
+                    type="text" id="caption" name="caption"
+                    oninput=self.link.callback(|e: InputData| Msg::Text(e.value))/>
+                <input
+                    type="button" value="Submit"
+                    onclick=self.link.callback(|_| Msg::Start)/>
+            </form>
+            <img src={ format!{"{}", self.url} } />
             </div>
         }
     }
@@ -135,19 +134,3 @@ impl Component for Model {
 fn main() {
     yew::start_app::<Model>();
 }
-
-//receive uploaded gif
-
-//get dimensions
-
-//?normalise small/large gifs
-
-//set text size relative to gif size
-//set margin size
-
-//calculate splitting
-
-//make sized box and add text
-//fn make_box(w: u16, h: u16, text: String) -> () {}
-
-//stick box to every frame image
