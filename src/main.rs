@@ -102,6 +102,10 @@ impl Component for Model {
     }
 }
 
+fn main() {
+    yew::start_app::<Model>();
+}
+
 //receive uploaded gif
 
 //get dimensions
