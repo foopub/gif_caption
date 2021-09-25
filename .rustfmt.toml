@@ -1,0 +1,6 @@
+brace_style = "AlwaysNextLine"
+error_on_line_overflow = true
+group_imports = "StdExternalCrate"
+imports_granularity = "Module"
+max_width = 81
+wrap_comments = true
