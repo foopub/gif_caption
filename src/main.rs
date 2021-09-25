@@ -6,6 +6,9 @@ use yew::{html, ChangeData, Component, ComponentLink, Html, InputData, ShouldRen
 
 mod gif_processor;
 
+#[cfg(test)]
+mod gif_test;
+
 pub enum Msg {
     File(File),
     Loaded(FileData),
@@ -69,9 +72,8 @@ impl Component for Model {
             Msg::Start => {
                 self.result.clear();
                 let processed =
-                    gif_processor::caption(&self.filedata.name, &self.filedata.content, &self.text);
-                let blob =
-                    Blob::new_with_options(processed.as_slice(), Some("image/gif"));
+                    gif_processor::caption(&self.filedata.name, self.filedata.content.as_slice(), &self.text);
+                let blob = Blob::new_with_options(processed.as_slice(), Some("image/gif"));
                 self.result.push(blob);
                 self.link.callback(|_| Msg::Complete).emit(());
                 true
@@ -94,7 +96,7 @@ impl Component for Model {
         html! {
             <div>
             <form>
-                <label>{ "Upload gif" }</label>
+                <label>{ "Upload gif: " }</label>
                 <input
                     type="file"
                     onchange=self.link.callback(move |value| {
