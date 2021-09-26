@@ -2,9 +2,10 @@ use std::borrow::Cow;
 use std::convert::TryInto;
 use std::io::Read;
 
-use gif;
+use {fontdue, gif};
 
-const SCALE: f64 = 1.2;
+const SCALE: f64 = 1.3;
+const CHAR_RATIO: f64 = 0.8;
 
 // Find the indices of the minimum and maximum values in one
 // iteration, panics if thes's no element.
@@ -39,16 +40,101 @@ where
 // the designated area.
 fn make_prepend(
     width: u16,
-    height: u16,
+    total_height: u16,
     black: u8,
     white: u8,
-    _text: String,
-) -> Vec<u8>
+    text: String,
+) -> (u16, Vec<u8>)
 {
-    let length = width as usize * height as usize;
+    use fontdue::layout::{
+        CoordinateSystem, HorizontalAlign, Layout, LayoutSettings, TextStyle,
+        VerticalAlign, WrapStyle,
+    };
+    use fontdue::{Font, FontSettings};
+
+    //only support chars, not graphemes for now;
+    let n_chars = text.chars().count() as f64;
+
+    // Default extension is 30% and allows 80 characters of
+    // text total.
+    let text_area = (width as f64 * total_height as f64) * (SCALE - 1.0);
+    let px = {
+        //test gif is 225x420 btw
+        let mut area_per_char = text_area / n_chars;
+        // some arbitrary ratio
+        area_per_char = area_per_char;// * (1.0 / CHAR_RATIO);
+        area_per_char.sqrt() as f32
+    };
+    println!("px {}", px);
+    //if px is too big or too small, change scale
+    let length = text_area as usize - (text_area as usize % width as usize);
+    let height = length as u16 / width;
+    println!("Piece width, height {}, {}", width, height);
+
+    let font = include_bytes!("../fonts/FjallaOne-Regular.ttf");
+    let font = Font::from_bytes(
+        font.as_ref(),
+        FontSettings {
+            collection_index: 0,
+            scale: px,
+        },
+    )
+    .unwrap();
+
+    let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+    layout.reset(&LayoutSettings {
+        x: 0.0,
+        y: 0.0,
+        max_width: Some(width.into()),
+        max_height: Some(height.into()),
+        horizontal_align: HorizontalAlign::Center,
+        vertical_align: VerticalAlign::Top,
+        wrap_style: WrapStyle::Word,
+        wrap_hard_breaks: true,
+    });
+
+    layout.append(&[&font], &TextStyle::new(&text, px, 0));
+
+    //make sure text area has whole lines
     let mut buf = vec![white; length];
 
-    buf
+    //println!("Creating pre {:#?}", layout.glyphs());
+    for glyph in layout.glyphs() {
+        let (mut x, mut y, w, h) = (
+            glyph.x as usize,
+            glyph.y as usize,
+            glyph.width,
+            glyph.height,
+        );
+        
+        let x0 = x.clone();
+        let w = w + x;
+        let (_, bitmap) =
+            &font.rasterize_indexed(glyph.key.glyph_index as usize, px);
+        println!("{}, {}, {}, {}, {}", x, y, bitmap.len(), w, h);
+        for pixel in bitmap {
+            if x > (width - 1).into() || y > (height-1).into() {
+                x += 1;
+                if x == w {
+                    x = x0;
+                    y += 1;
+                }
+                continue;
+            }
+
+            buf[x + y * width as usize] =
+                if *pixel < 128 { white } else { black };
+
+            //advance x
+            x += 1;
+            if x == w {
+                x = x0;
+                y += 1;
+            }
+        }
+        //println!("{:?}", buf)
+    }
+    (total_height + height, buf)
 }
 
 //#[test]
@@ -66,7 +152,6 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
 
     let h = decoder.height();
     let w = decoder.width();
-    let new_h = (h as f64 * SCALE) as u16;
 
     let (palette, min, max): (Vec<u8>, usize, usize) =
         match decoder.global_palette() {
@@ -93,9 +178,9 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
             }
         };
 
-    let pre = make_prepend(
+    let (new_h, pre) = make_prepend(
         w,
-        new_h - h,
+        h,
         min.try_into().unwrap(),
         max.try_into().unwrap(),
         caption.to_string(),
@@ -104,8 +189,7 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
     //println!("w {}, h {}, new_h {}, pre {}", w, h, new_h, pre.len());
 
     let mut encoder =
-        gif::Encoder::new(&mut out_image, w, new_h, palette.as_slice())
-            .unwrap();
+        gif::Encoder::new(&mut out_image, w, new_h, palette.as_slice()).unwrap();
     encoder.set_repeat(gif::Repeat::Infinite).unwrap();
 
     while let Some(old_frame) = decoder.read_next_frame().unwrap() {
