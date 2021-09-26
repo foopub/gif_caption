@@ -19,14 +19,15 @@ fn sample_gifs()
     out_image.write(&out).unwrap();
 }
 
+static FONT: &[u8] = include_bytes!("../fonts/RobotoMono-Regular.ttf") as &[u8];
+
 #[test]
 fn font_test()
 {
     // Read the font data.
-    let font = include_bytes!("../fonts/RobotoMono-Regular.ttf") as &[u8];
     // Parse it into the font type.
     let roboto_regular =
-        Font::from_bytes(font, FontSettings::default()).unwrap();
+        Font::from_bytes(FONT, FontSettings::default()).unwrap();
     // The list of fonts that will be used during layout.
     let fonts = &[roboto_regular];
     // Create a layout context. Laying out text needs some heap allocations;

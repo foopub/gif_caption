@@ -39,7 +39,7 @@ where
 // Generate the section to prepend by fitting some text into
 // the designated area.
 fn make_prepend(
-    width: u16,
+    piece_width: u16,
     total_height: u16,
     black: u8,
     white: u8,
@@ -52,24 +52,25 @@ fn make_prepend(
     };
     use fontdue::{Font, FontSettings};
 
-    //only support chars, not graphemes for now;
-    let n_chars = text.chars().count() as f64;
 
     // Default extension is 30% and allows 80 characters of
     // text total.
-    let text_area = (width as f64 * total_height as f64) * (SCALE - 1.0);
+    let piece_height = (total_height as f64 * (SCALE - 1.0)) as u16;
+    let text_area = piece_width as f64 * piece_height as f64;
+
     let px = {
+        //only support chars, not graphemes for now;
+        let n_chars = text.chars().count() as f64;
         //test gif is 225x420 btw
-        let mut area_per_char = text_area / n_chars;
+        let area_per_char = text_area / n_chars;
         // some arbitrary ratio
-        area_per_char = area_per_char;// * (1.0 / CHAR_RATIO);
+        //area_per_char = area_per_char * (1.0 / CHAR_RATIO);
         area_per_char.sqrt() as f32
     };
+
     println!("px {}", px);
     //if px is too big or too small, change scale
-    let length = text_area as usize - (text_area as usize % width as usize);
-    let height = length as u16 / width;
-    println!("Piece width, height {}, {}", width, height);
+    println!("Piece width, height {}, {}", piece_width, piece_height);
 
     let font = include_bytes!("../fonts/FjallaOne-Regular.ttf");
     let font = Font::from_bytes(
@@ -85,18 +86,19 @@ fn make_prepend(
     layout.reset(&LayoutSettings {
         x: 0.0,
         y: 0.0,
-        max_width: Some(width.into()),
-        max_height: Some(height.into()),
+        max_width: Some(piece_width.into()),
+        max_height: Some(piece_height.into()),
         horizontal_align: HorizontalAlign::Center,
         vertical_align: VerticalAlign::Top,
         wrap_style: WrapStyle::Word,
         wrap_hard_breaks: true,
     });
 
+    //
     layout.append(&[&font], &TextStyle::new(&text, px, 0));
 
-    //make sure text area has whole lines
-    let mut buf = vec![white; length];
+    //make the canvas
+    let mut buf = vec![white; text_area as usize];
 
     //println!("Creating pre {:#?}", layout.glyphs());
     for glyph in layout.glyphs() {
@@ -113,7 +115,7 @@ fn make_prepend(
             &font.rasterize_indexed(glyph.key.glyph_index as usize, px);
         println!("{}, {}, {}, {}, {}", x, y, bitmap.len(), w, h);
         for pixel in bitmap {
-            if x > (width - 1).into() || y > (height-1).into() {
+            if x > (piece_width - 1).into() || y > (piece_height-1).into() {
                 x += 1;
                 if x == w {
                     x = x0;
@@ -122,7 +124,7 @@ fn make_prepend(
                 continue;
             }
 
-            buf[x + y * width as usize] =
+            buf[x + y * piece_width as usize] =
                 if *pixel < 128 { white } else { black };
 
             //advance x
@@ -134,7 +136,7 @@ fn make_prepend(
         }
         //println!("{:?}", buf)
     }
-    (total_height + height, buf)
+    (total_height + piece_height, buf)
 }
 
 //#[test]
@@ -178,6 +180,7 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
             }
         };
 
+    // new height!
     let (new_h, pre) = make_prepend(
         w,
         h,
@@ -185,19 +188,28 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
         max.try_into().unwrap(),
         caption.to_string(),
     );
+    let h_shift = new_h - h;
+    let h = new_h;
 
     //println!("w {}, h {}, new_h {}, pre {}", w, h, new_h, pre.len());
 
     let mut encoder =
-        gif::Encoder::new(&mut out_image, w, new_h, palette.as_slice()).unwrap();
+        gif::Encoder::new(&mut out_image, w, h, palette.as_slice()).unwrap();
     encoder.set_repeat(gif::Repeat::Infinite).unwrap();
+
+    //we only really need to process the first frame for now
+    if let Some(old_frame) = decoder.read_next_frame().unwrap() {
+        let mut new_frame = old_frame.clone();
+        new_frame.width = w;
+        new_frame.height = h;
+        process_buffer(&w, &h, &pre.as_slice(), &mut new_frame.buffer); //, &mut frame.buffer);
+
+        encoder.write_frame(&new_frame).unwrap();
+    }
 
     while let Some(old_frame) = decoder.read_next_frame().unwrap() {
         let mut new_frame = old_frame.clone();
-        new_frame.width = w;
-        new_frame.height = new_h;
-        process_buffer(&w, &new_h, &pre.as_slice(), &mut new_frame.buffer); //, &mut frame.buffer);
-
+        new_frame.top += h_shift;
         encoder.write_frame(&new_frame).unwrap();
     }
     drop(encoder);
