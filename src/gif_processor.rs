@@ -2,10 +2,7 @@ use std::borrow::Cow;
 use std::convert::TryInto;
 use std::io::Read;
 
-use {fontdue, gif};
-
 const SCALE: f64 = 1.3;
-const CHAR_RATIO: f64 = 0.8;
 
 // Find the indices of the minimum and maximum values in one
 // iteration, panics if thes's no element.
@@ -52,26 +49,26 @@ fn make_prepend(
     };
     use fontdue::{Font, FontSettings};
 
-
-    // Default extension is 30% and allows 80 characters of
-    // text total.
+    // calculate all the dimensions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // default extension is 30%
     let piece_height = (total_height as f64 * (SCALE - 1.0)) as u16;
     let text_area = piece_width as f64 * piece_height as f64;
 
     let px = {
-        //only support chars, not graphemes for now;
+        // only support chars, not graphemes for now;
         let n_chars = text.chars().count() as f64;
         //test gif is 225x420 btw
         let area_per_char = text_area / n_chars;
         // some arbitrary ratio
-        //area_per_char = area_per_char * (1.0 / CHAR_RATIO);
+        // area_per_char = area_per_char * (1.0 / CHAR_RATIO);
         area_per_char.sqrt() as f32
     };
 
-    println!("px {}", px);
-    //if px is too big or too small, change scale
-    println!("Piece width, height {}, {}", piece_width, piece_height);
+    // TODO if px is too big or too small, change scale
+    //println!("Piece w {}, h {}, px {}", piece_width, piece_height, px);
 
+    // prepare the font, layout, and canvas ~~~~~~~~~~~~~~~~~~~~~~~~~
+    // font lol
     let font = include_bytes!("../fonts/FjallaOne-Regular.ttf");
     let font = Font::from_bytes(
         font.as_ref(),
@@ -81,7 +78,7 @@ fn make_prepend(
         },
     )
     .unwrap();
-
+    //layout
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         x: 0.0,
@@ -93,63 +90,90 @@ fn make_prepend(
         wrap_style: WrapStyle::Word,
         wrap_hard_breaks: true,
     });
+    // canvas
+    let mut canvas = vec![white; text_area as usize];
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    //
     layout.append(&[&font], &TextStyle::new(&text, px, 0));
-
-    //make the canvas
-    let mut buf = vec![white; text_area as usize];
-
     //println!("Creating pre {:#?}", layout.glyphs());
+
+    // In case I want to make this a separate function, tho that doesn't
+    // make much sense given how many args I would have to pass
+    //
+    //    draw(
+    //        font,
+    //        px,
+    //        &mut canvas,
+    //        black,
+    //        white,
+    //        layout,
+    //        piece_width,
+    //        &piece_height,
+    //    );
+    //}
+    //
+    //fn draw(
+    //    font: Font,
+    //    px: f32,
+    //    canvas: &mut Vec<u8>,
+    //    black: u8,
+    //    white: u8,
+    //    mut layout: Layout,
+    //    piece_width: u16,
+    //    piece_height: &u16,
+    //) -> ()
+    //{
     for glyph in layout.glyphs() {
-        let (mut x, mut y, w, h) = (
+        let (mut x, mut y, w) = (
             glyph.x as usize,
             glyph.y as usize,
             glyph.width,
-            glyph.height,
+            //glyph.height,
         );
-        
+
         let x0 = x.clone();
         let w = w + x;
         let (_, bitmap) =
             &font.rasterize_indexed(glyph.key.glyph_index as usize, px);
-        println!("{}, {}, {}, {}, {}", x, y, bitmap.len(), w, h);
+
+        //println!("{}, {}, {}, {}, {}", x, y, bitmap.len(), w, h);
         for pixel in bitmap {
-            if x > (piece_width - 1).into() || y > (piece_height-1).into() {
-                x += 1;
-                if x == w {
-                    x = x0;
-                    y += 1;
-                }
+            // when position exceeds piece width limit, reset x and move
+            // down to next line
+            if x > (piece_width - 1).into() {
+                x = x0;
+                y += 1;
                 continue;
             }
-
-            buf[x + y * piece_width as usize] =
+            // when position exceeds y limit, there's nothing more to draw
+            if y > (piece_height - 1).into() {
+                break;
+            }
+            // get x, y coordinate and draw black/white pixel...
+            // TODO add grayscale and potentially colour
+            canvas[x + y * piece_width as usize] =
                 if *pixel < 128 { white } else { black };
 
-            //advance x
+            // advance x
             x += 1;
             if x == w {
                 x = x0;
                 y += 1;
             }
         }
-        //println!("{:?}", buf)
     }
-    (total_height + piece_height, buf)
+
+    (total_height + piece_height, canvas)
 }
 
-//#[test]
-//pub fn caption_test() -> ()
 pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
 {
-    //let input = File::open("test.gif").unwrap();
-    //let mut out_image = File::create("result.gif").unwrap();
+    use gif::{ColorOutput, DecodeOptions, Encoder, Repeat};
     let mut out_image = Vec::new();
 
-    let mut options = gif::DecodeOptions::new();
+    let mut options = DecodeOptions::new();
     // This should be the default anyway, but better safe
-    options.set_color_output(gif::ColorOutput::Indexed);
+    options.set_color_output(ColorOutput::Indexed);
     let mut decoder = options.read_info(bytes).unwrap();
 
     let h = decoder.height();
@@ -194,13 +218,16 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
     //println!("w {}, h {}, new_h {}, pre {}", w, h, new_h, pre.len());
 
     let mut encoder =
-        gif::Encoder::new(&mut out_image, w, h, palette.as_slice()).unwrap();
-    encoder.set_repeat(gif::Repeat::Infinite).unwrap();
+        Encoder::new(&mut out_image, w, h, palette.as_slice()).unwrap();
+    encoder.set_repeat(Repeat::Infinite).unwrap();
 
-    //we only really need to process the first frame for now
+    //we only really need to process the first frame for now,
+    //then copy the rest with the height shift only updating that
+    //part of the image. The minmax doesn't necessarily get true
+    //white/black so we can also substitute those.
     if let Some(old_frame) = decoder.read_next_frame().unwrap() {
         let mut new_frame = old_frame.clone();
-        new_frame.width = w;
+        //new_frame.width = w; this is the same lol
         new_frame.height = h;
         process_buffer(&w, &h, &pre.as_slice(), &mut new_frame.buffer); //, &mut frame.buffer);
 
