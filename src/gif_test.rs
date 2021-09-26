@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 
-use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
+use fontdue::layout::{CoordinateSystem, Layout, TextStyle};
 use fontdue::{Font, FontSettings};
 
 use crate::gif_processor;

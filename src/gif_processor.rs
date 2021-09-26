@@ -33,21 +33,65 @@ where
     (min_idx, max_idx)
 }
 
+enum Palette
+{
+    GlobalPalette(Vec<u8>),
+    LocalPalette(Vec<u8>),
+}
+
+// Oricess the supplied global palette to find the darkest and
+// lightest colours, and if none, create a local palette with
+// just black and white
+fn process_palette(palette: Option<&[u8]>) -> (Palette, u8, u8)
+{
+    let (palette, min, max): (Palette, usize, usize) = match palette {
+        Some(palette) => {
+            // if a global palette exists, we search for the darkest
+            // and lightest colours to use as black and white
+            let sums = palette
+                .chunks(3)
+                // take the sums of each chunk of 3 bytes (rgb) to
+                // represent its total brightness
+                .map(|x| x.iter().map(|y| *y as usize).sum::<usize>());
+
+            let (min, max) = minmax_ids(sums);
+            //println!("min {}, max {}", min, max);
+            let mut p = palette.to_vec();
+            p[min * 3..min * 3 + 3].fill(0);
+            p[max * 3..max * 3 + 3].fill(255);
+            println!("Global palette");
+            (Palette::GlobalPalette(p), min, max)
+        }
+        None => {
+            // if no global palette, we can pass a local palette for
+            // the first frame only
+            let mut p = vec![0; 3];
+            p.extend([255; 3]);
+            println!("Local palette");
+            (Palette::LocalPalette(p), 0, 1)
+        }
+    };
+    (palette, min.try_into().unwrap(), max.try_into().unwrap())
+}
+
 // Generate the section to prepend by fitting some text into
 // the designated area.
 fn make_prepend(
     piece_width: u16,
     total_height: u16,
-    black: u8,
-    white: u8,
+    //black: u8,
+    //white: u8,
+    palette: Option<&[u8]>,
     text: String,
-) -> (u16, Vec<u8>)
+) -> (u16, Vec<u8>, Palette)
 {
     use fontdue::layout::{
         CoordinateSystem, HorizontalAlign, Layout, LayoutSettings, TextStyle,
         VerticalAlign, WrapStyle,
     };
     use fontdue::{Font, FontSettings};
+
+    let (palette, black, white) = process_palette(palette);
 
     // calculate all the dimensions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // default extension is 30%
@@ -86,43 +130,18 @@ fn make_prepend(
         max_width: Some(piece_width.into()),
         max_height: Some(piece_height.into()),
         horizontal_align: HorizontalAlign::Center,
-        vertical_align: VerticalAlign::Top,
+        vertical_align: VerticalAlign::Middle,
         wrap_style: WrapStyle::Word,
         wrap_hard_breaks: true,
     });
     // canvas
     let mut canvas = vec![white; text_area as usize];
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+    // "write" text to the layout
     layout.append(&[&font], &TextStyle::new(&text, px, 0));
     //println!("Creating pre {:#?}", layout.glyphs());
 
-    // In case I want to make this a separate function, tho that doesn't
-    // make much sense given how many args I would have to pass
-    //
-    //    draw(
-    //        font,
-    //        px,
-    //        &mut canvas,
-    //        black,
-    //        white,
-    //        layout,
-    //        piece_width,
-    //        &piece_height,
-    //    );
-    //}
-    //
-    //fn draw(
-    //    font: Font,
-    //    px: f32,
-    //    canvas: &mut Vec<u8>,
-    //    black: u8,
-    //    white: u8,
-    //    mut layout: Layout,
-    //    piece_width: u16,
-    //    piece_height: &u16,
-    //) -> ()
-    //{
+    // now draw 🔫 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     for glyph in layout.glyphs() {
         let (mut x, mut y, w) = (
             glyph.x as usize,
@@ -163,12 +182,14 @@ fn make_prepend(
         }
     }
 
-    (total_height + piece_height, canvas)
+    (total_height + piece_height, canvas, palette)
 }
 
 pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
 {
+    use gif::DisposalMethod;
     use gif::{ColorOutput, DecodeOptions, Encoder, Repeat};
+
     let mut out_image = Vec::new();
 
     let mut options = DecodeOptions::new();
@@ -179,37 +200,13 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
     let h = decoder.height();
     let w = decoder.width();
 
-    let (palette, min, max): (Vec<u8>, usize, usize) =
-        match decoder.global_palette() {
-            Some(palette) => {
-                //if a global palette exists, we search for the darkest
-                //and lightest colours to use as black and white
-                let sums = palette
-                    .chunks(3)
-                    // take the sums of each chunk of 3 bytes (rgb) to
-                    // represent its total brightness
-                    .map(|x| x.iter().map(|y| *y as usize).sum::<usize>());
-
-                let (min, max) = minmax_ids(sums);
-
-                //println!("min {}, max {}", min, max);
-                (palette.to_vec(), min, max)
-            }
-            None => {
-                //global palette needs to have 256 colours, each taking
-                //3 bytes for r, g, b - so make 255 black and add white
-                let mut p = vec![0; 255 * 3];
-                p.extend([1; 3]);
-                (p, 0, 255)
-            }
-        };
-
     // new height!
-    let (new_h, pre) = make_prepend(
+    let (new_h, pre, palette) = make_prepend(
         w,
         h,
-        min.try_into().unwrap(),
-        max.try_into().unwrap(),
+        decoder.global_palette(),
+        //min.try_into().unwrap(),
+        //max.try_into().unwrap(),
         caption.to_string(),
     );
     let h_shift = new_h - h;
@@ -217,26 +214,34 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
 
     //println!("w {}, h {}, new_h {}, pre {}", w, h, new_h, pre.len());
 
-    let mut encoder =
-        Encoder::new(&mut out_image, w, h, palette.as_slice()).unwrap();
+    // if the palette is global, use it, else pass an empty slice
+    let mut encoder = {
+        let global_palette = match palette {
+            Palette::GlobalPalette(p) => p,
+            Palette::LocalPalette(_) => vec![],
+        };
+        Encoder::new(&mut out_image, w, h, &global_palette).unwrap()
+    };
     encoder.set_repeat(Repeat::Infinite).unwrap();
 
-    //we only really need to process the first frame for now,
-    //then copy the rest with the height shift only updating that
-    //part of the image. The minmax doesn't necessarily get true
-    //white/black so we can also substitute those.
-    if let Some(old_frame) = decoder.read_next_frame().unwrap() {
-        let mut new_frame = old_frame.clone();
-        //new_frame.width = w; this is the same lol
-        new_frame.height = h;
-        process_buffer(&w, &h, &pre.as_slice(), &mut new_frame.buffer); //, &mut frame.buffer);
-
-        encoder.write_frame(&new_frame).unwrap();
-    }
+    // well... I learned about disposal methods smh
+    let mut previous_disposal = DisposalMethod::Background;
 
     while let Some(old_frame) = decoder.read_next_frame().unwrap() {
         let mut new_frame = old_frame.clone();
-        new_frame.top += h_shift;
+        // if the disposal method is not Keep, we need to re-add the
+        // piece
+        println!("{:?}", new_frame.dispose);
+        match previous_disposal {
+            DisposalMethod::Keep | DisposalMethod::Previous => {
+                new_frame.top += h_shift;
+            }
+            _ => {
+                new_frame.height = h;
+                process_buffer(&w, &h, &pre.as_slice(), &mut new_frame.buffer);
+            }
+        }
+        previous_disposal = new_frame.dispose;
         encoder.write_frame(&new_frame).unwrap();
     }
     drop(encoder);
