@@ -95,7 +95,7 @@ impl Component for Model {
     fn view(&self) -> Html {
         html! {
             <div>
-            <form>
+            <div>
                 <label>{ "Upload gif: " }</label>
                 <input
                     type="file"
@@ -126,8 +126,10 @@ impl Component for Model {
                 <input
                     type="button" value="Submit"
                     onclick=self.link.callback(|_| Msg::Start)/>
-            </form>
+            </div>
+            <div>
             <img src={ format!{"{}", self.url} } />
+            </div>
             </div>
         }
     }
