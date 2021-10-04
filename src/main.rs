@@ -5,6 +5,7 @@ use yew::web_sys::Url;
 use yew::{html, ChangeData, Component, ComponentLink, Html, InputData, ShouldRender};
 
 mod gif_processor;
+mod clustering;
 
 #[cfg(test)]
 mod gif_test;

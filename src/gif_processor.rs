@@ -59,7 +59,7 @@ fn process_palette(palette: Option<&[u8]>) -> (Palette, u8, u8)
             let mut p = palette.to_vec();
             p[min * 3..min * 3 + 3].fill(0);
             p[max * 3..max * 3 + 3].fill(255);
-            println!("Global palette");
+            //println!("Global palette");
             (Palette::GlobalPalette(p), min, max)
         }
         None => {
@@ -67,7 +67,7 @@ fn process_palette(palette: Option<&[u8]>) -> (Palette, u8, u8)
             // the first frame only
             let mut p = vec![0; 3];
             p.extend([255; 3]);
-            println!("Local palette");
+            //println!("Local palette");
             (Palette::LocalPalette(p), 0, 1)
         }
     };
@@ -187,8 +187,7 @@ fn make_prepend(
 
 pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
 {
-    use gif::DisposalMethod;
-    use gif::{ColorOutput, DecodeOptions, Encoder, Repeat};
+    use gif::{ColorOutput, DecodeOptions, DisposalMethod, Encoder, Repeat};
 
     let mut out_image = Vec::new();
 
@@ -220,6 +219,7 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
             Palette::GlobalPalette(p) => p,
             Palette::LocalPalette(_) => vec![],
         };
+        // empty vec means no global palette
         Encoder::new(&mut out_image, w, h, &global_palette).unwrap()
     };
     encoder.set_repeat(Repeat::Infinite).unwrap();
@@ -229,14 +229,14 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
 
     while let Some(old_frame) = decoder.read_next_frame().unwrap() {
         let mut new_frame = old_frame.clone();
-        // if the disposal method is not Keep, we need to re-add the
-        // piece
-        println!("{:?}", new_frame.dispose);
+        // if the disposal method is not Keep, we need to re-add the piece
+        //println!("{:?}", new_frame.dispose);
         match previous_disposal {
             DisposalMethod::Keep | DisposalMethod::Previous => {
                 new_frame.top += h_shift;
             }
             _ => {
+                // TODO if frame uses local palette, colours need to be adjusted
                 new_frame.height = h;
                 process_buffer(&w, &h, &pre.as_slice(), &mut new_frame.buffer);
             }
