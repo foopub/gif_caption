@@ -286,7 +286,7 @@ fn maximise(
     let mut dir = Direction::Red;
 
     // get the values for the whole cube
-    let whole = ColourEntry::new();
+    let mut whole = ColourEntry::new();
     let (pos, neg) = all_indices(&cube);
     combine(&pos, &neg, &space, &mut whole);
 
@@ -304,10 +304,10 @@ fn maximise(
 
             // no need to iterate further as this won't be getting smaller!
             if half.count == whole.count {
-                break;
+                continue;
             }
             if half.count == 0 {
-                continue;
+                break;
             }
 
             // idk what else to name this lol
