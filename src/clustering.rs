@@ -189,7 +189,7 @@ fn combine(
     neg.iter().for_each(|x| entry.sub_inplace(&space.index(x)));
 }
 
-fn bottom_indeces(
+fn bottom_indices(
     cube: &ColourCube,
     direction: &Direction,
 ) -> ([(u8, u8, u8); 2], [(u8, u8, u8); 2])
@@ -212,7 +212,7 @@ fn bottom_indeces(
     (pos, neg)
 }
 
-fn top_indeces(
+fn top_indices(
     cube: &ColourCube,
     direction: &Direction,
     top: u8,
@@ -239,7 +239,7 @@ fn top_indeces(
     (pos, neg)
 }
 
-fn all_vals(cube: &ColourCube) -> ([(u8, u8, u8); 4], [(u8, u8, u8); 4])
+fn all_indices(cube: &ColourCube) -> ([(u8, u8, u8); 4], [(u8, u8, u8); 4])
 {
     let (e, s) = (cube.end, cube.start);
     let (pos, neg) = (
@@ -262,7 +262,7 @@ fn all_vals(cube: &ColourCube) -> ([(u8, u8, u8); 4], [(u8, u8, u8); 4])
 fn variance(cube: &ColourCube, space: &ColourSpace) -> f64
 {
     let mut result = ColourEntry::new();
-    let (pos, neg) = all_vals(&cube);
+    let (pos, neg) = all_indices(&cube);
     combine(&pos, &neg, &space, &mut result);
     result.m2 as f64 - result.m.squared() as f64 / result.count as f64
 }
@@ -287,17 +287,17 @@ fn maximise(
 
     // get the values for the whole cube
     let whole = ColourEntry::new();
-    let (pos, neg) = all_vals(&cube);
+    let (pos, neg) = all_indices(&cube);
     combine(&pos, &neg, &space, &mut whole);
 
     for (direction, range) in it {
         let mut base = ColourEntry::new();
-        let (pos, neg) = bottom_indeces(&cube, &direction);
+        let (pos, neg) = bottom_indices(&cube, &direction);
         combine(&pos, &neg, &space, &mut base);
 
         for i in range {
             let mut half = ColourEntry::new();
-            let (pos, neg) = top_indeces(&cube, &direction, i);
+            let (pos, neg) = top_indices(&cube, &direction, i);
             combine(&pos, &neg, &space, &mut half);
 
             half.sub_inplace(&base);
@@ -344,7 +344,7 @@ fn compress(palette: &[RGB<u8>]) -> ()
         end: RGB::new(0u8, 0, 0),
     };
     let mut whole = ColourEntry::new();
-    let (pos, neg) = all_vals(&cube);
+    let (pos, neg) = all_indices(&cube);
     combine(&pos, &neg, &space, &mut whole);
     //maximise(&cube, &space);
 }
