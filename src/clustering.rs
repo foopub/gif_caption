@@ -169,6 +169,7 @@ fn cummulate_vals(space: &mut ColourSpace) -> ()
     }
 }
 
+#[derive(Copy, Clone)]
 enum Direction
 {
     Red,
@@ -188,36 +189,54 @@ fn combine(
     neg.iter().for_each(|x| entry.sub_inplace(&space.index(x)));
 }
 
-fn partial_vals(
+fn bottom_indeces(
     cube: &ColourCube,
     direction: &Direction,
-    shift: u8,
 ) -> ([(u8, u8, u8); 2], [(u8, u8, u8); 2])
 {
-    let (e, s) = if shift > 0 {
-        (cube.start, cube.end)
-    } else {
-        (cube.end, cube.start)
-    };
+    let (e, s) = (cube.end, cube.start);
     let (pos, neg) = match direction {
         Direction::Red => (
-            [(e.r + shift, e.g, e.b), (e.r + shift, s.g, s.b)],
-            [(e.r + shift, s.g, e.b), (e.r + shift, e.g, s.b)],
+            [(e.r, e.g, e.b), (e.r, s.g, s.b)],
+            [(e.r, s.g, e.b), (e.r, e.g, s.b)],
         ),
         Direction::Blue => (
-            [(e.r, e.g, e.b + shift), (s.r, s.g, e.b + shift)],
-            [(s.r, e.g, e.b + shift), (e.r, s.g, e.b + shift)],
+            [(e.r, e.g, e.b), (s.r, s.g, e.b)],
+            [(s.r, e.g, e.b), (e.r, s.g, e.b)],
         ),
         Direction::Green => (
-            [(e.r, e.g + shift, e.b), (s.r, e.g + shift, s.b)],
-            [(s.r, e.g + shift, e.b), (e.r, e.g + shift, s.b)],
+            [(e.r, e.g, e.b), (s.r, e.g, s.b)],
+            [(s.r, e.g, e.b), (e.r, e.g, s.b)],
         ),
     };
-    if shift > 0 {
-        (neg, pos)
-    } else {
-        (pos, neg)
-    }
+    (pos, neg)
+}
+
+fn top_indeces(
+    cube: &ColourCube,
+    direction: &Direction,
+    top: u8,
+) -> ([(u8, u8, u8); 2], [(u8, u8, u8); 2])
+{
+    let (e, s) = (cube.end, cube.start);
+    let (pos, neg) = match direction {
+        Direction::Red => (
+            //top is e.r
+            [(top, s.g, s.b), (top, e.g, e.b)],
+            [(top, e.g, s.b), (top, s.g, e.b)],
+        ),
+        Direction::Blue => (
+            //top is e.b
+            [(s.r, s.g, top), (e.r, e.g, top)],
+            [(e.r, s.g, top), (s.r, e.g, top)],
+        ),
+        Direction::Green => (
+            //top is e.g
+            [(s.r, top, s.b), (e.r, top, e.b)],
+            [(e.r, top, s.b), (s.r, top, e.b)],
+        ),
+    };
+    (pos, neg)
 }
 
 fn all_vals(cube: &ColourCube) -> ([(u8, u8, u8); 4], [(u8, u8, u8); 4])
@@ -250,68 +269,64 @@ fn variance(cube: &ColourCube, space: &ColourSpace) -> f64
 
 fn maximise(
     cube: &ColourCube,
-    other_cube: &mut ColourCube,
-    //direction: Direction,
-    //range: u8,
-    whole: &ColourEntry,
+    //whole: &ColourEntry,
     space: &ColourSpace,
-) -> (RGB<f64>, RGB<u8>)
+) -> (f64, u8, Direction)
 {
-    let mut max_ = RGB::new(0.0, 0.0, 0.0);
-    let mut cut_ = RGB::new(0u8, 0, 0);
-    let mut it = [
-        (
-            Direction::Red,
-            cube.end.r - cube.start.r,
-            &mut max_.r,
-            &mut cut_.r,
-        ),
-        (
-            Direction::Green,
-            cube.end.g - cube.start.g,
-            &mut max_.g,
-            &mut cut_.g,
-        ),
-        (
-            Direction::Blue,
-            cube.end.b - cube.start.b,
-            &mut max_.b,
-            &mut cut_.b,
-        ),
+    //we'll iterate over these directions and ranges
+    let it = [
+        (Direction::Red, cube.end.r..cube.start.r),
+        (Direction::Green, cube.end.g..cube.start.g),
+        (Direction::Blue, cube.end.b..cube.start.b),
     ];
-    for (direction, range, max, cut) in it.iter_mut() {
+
+    // some vars for the results
+    let mut max = 0.0;
+    let mut cut = 0;
+    let mut dir = Direction::Red;
+
+    // get the values for the whole cube
+    let whole = ColourEntry::new();
+    let (pos, neg) = all_vals(&cube);
+    combine(&pos, &neg, &space, &mut whole);
+
+    for (direction, range) in it {
         let mut base = ColourEntry::new();
-        let (pos, neg) = partial_vals(&cube, &direction, 0);
+        let (pos, neg) = bottom_indeces(&cube, &direction);
         combine(&pos, &neg, &space, &mut base);
 
-        // important to start from 1
-        for i in 1..*range {
-            let mut half = base.clone();
-            let (pos, neg) = partial_vals(&cube, &direction, i);
+        for i in range {
+            let mut half = ColourEntry::new();
+            let (pos, neg) = top_indeces(&cube, &direction, i);
             combine(&pos, &neg, &space, &mut half);
+
+            half.sub_inplace(&base);
+
+            // no need to iterate further as this won't be getting smaller!
+            if half.count == whole.count {
+                break;
+            }
             if half.count == 0 {
                 continue;
             }
 
-            let other_half = whole.clone().sub(&half);
-            if other_half.count == 0 {
-                continue;
-            }
+            // idk what else to name this lol
+            // also surely this can be optimised ???
+            let anti_variance = {
+                let other_half = whole.clone().sub(&half);
 
-            let temp = half.m.squared() as f64 / half.count as f64
-                + other_half.m.squared() as f64 / other_half.count as f64;
+                half.m.squared() as f64 / half.count as f64
+                    + other_half.m.squared() as f64 / other_half.count as f64
+            };
 
-            if temp > **max {
-                **max = temp;
-                **cut = i;
+            if anti_variance > max {
+                max = anti_variance;
+                cut = i;
+                dir = direction;
             }
         }
     }
-    //easier than dealing with floating point bs for now
-    let max = it.iter().max_by_key(|x| (*x.2 * 128.0) as usize).unwrap();
-    other_cube.end = cube.end;
-    other_cube.start = cube.start;
-    (max_, cut_)
+    (max, cut, dir)
 }
 
 #[allow(dead_code)]
@@ -331,5 +346,5 @@ fn compress(palette: &[RGB<u8>]) -> ()
     let mut whole = ColourEntry::new();
     let (pos, neg) = all_vals(&cube);
     combine(&pos, &neg, &space, &mut whole);
-    maximise(&cube, &mut other_cube, &whole, &space);
+    //maximise(&cube, &space);
 }
