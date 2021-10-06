@@ -8,15 +8,34 @@
 // Fast nearest neighbour - looks very promising too
 
 use std::iter::FromIterator;
-use std::ops::Sub; //, SubAssign};
 
 use rgb::RGB;
 
-//type u8 = u8;
 const COLOURS: usize = 256;
 const ROUND_N: usize = 3;
 const SPACE_SIZE: usize = (255 >> ROUND_N) + 1;
-const UNIT_RGB: RGB<u8> = RGB::new(1u8, 1, 1);
+
+#[derive(Copy, Clone)]
+enum Direction
+{
+    Red,
+    Green,
+    Blue,
+}
+
+struct ColourCube
+{
+    end: RGB<u8>,
+    start: RGB<u8>,
+}
+
+#[derive(Copy, Clone)]
+struct ColourEntry
+{
+    pub m: RGB<usize>,
+    pub count: usize,
+    pub m2: usize,
+}
 
 struct ColourSpace
 {
@@ -31,28 +50,16 @@ impl ColourSpace
         let s = [[[entry; SPACE_SIZE]; SPACE_SIZE]; SPACE_SIZE];
         ColourSpace { s }
     }
+
     fn index(&self, rgb: &[u8; 3]) -> &ColourEntry
     {
         &self.s[rgb[0] as usize][rgb[1] as usize][rgb[2] as usize]
     }
+
     fn index_mut(&mut self, rgb: &[u8; 3]) -> &mut ColourEntry
     {
         &mut self.s[rgb[0] as usize][rgb[1] as usize][rgb[2] as usize]
     }
-}
-
-#[derive(Copy, Clone)]
-struct ColourEntry
-{
-    pub m: RGB<usize>,
-    pub count: usize,
-    pub m2: usize,
-}
-
-struct ColourCube
-{
-    end: RGB<u8>,
-    start: RGB<u8>,
 }
 
 impl ColourEntry
@@ -63,27 +70,32 @@ impl ColourEntry
         let (count, m2) = (0, 0);
         ColourEntry { m, count, m2 }
     }
+
     fn add_some(&mut self, other: &Self) -> ()
     {
         //self.m.add_inplace(&other.m);
         self.m += other.m;
         self.count += other.count;
     }
+
     fn add_inplace(&mut self, other: &Self) -> ()
     {
         self.add_some(&other);
         self.m2 += other.m2;
     }
+
     fn sub_some(&mut self, other: &Self) -> ()
     {
         self.m -= other.m;
         self.count -= other.count;
     }
+
     fn sub_inplace(&mut self, other: &Self) -> ()
     {
         self.sub_some(&other);
         self.m2 -= other.m2;
     }
+
     fn sub(&self, other: &Self) -> Self
     {
         let mut out = self.clone();
@@ -113,10 +125,6 @@ impl<T: Into<usize>> From<(&RGB<u8>, T, T)> for ColourEntry
 
 trait Wu
 {
-    fn dominates(&self, other: Self) -> bool;
-    //fn add_inplace(&mut self, other: &Self) -> ();
-    //fn sub_inplace(&mut self, other: &Self) -> ();
-    //fn sub(&self, other: &Self) -> Self;
     fn squared(&self) -> usize;
 }
 
@@ -130,9 +138,9 @@ impl Wu8 for RGB<u8>
 {
     fn round(&self) -> [u8; 3]
     {
-        //round up the bytes by ignoring the last few bits
         [self.r >> ROUND_N, self.g >> ROUND_N, self.b >> ROUND_N]
     }
+
     fn squared(&self) -> usize
     {
         self.iter().map(|x| (x as usize).pow(2)).sum()
@@ -145,38 +153,10 @@ impl Wu for RGB<usize>
     {
         self.iter().map(|x| x as usize ^ 2).sum()
     }
-    fn dominates(&self, other: Self) -> bool
-    {
-        (self.r > other.r) & (self.g > other.g) & (self.b > other.b)
-    }
-
-    //fn add_inplace(&mut self, other: &Self) -> ()
-    //{
-    //    self.r += other.r;
-    //    self.g += other.g;
-    //    self.b += other.b;
-    //}
-    //fn sub_inplace(&mut self, other: &Self) -> ()
-    //{
-    //    self.r -= other.r;
-    //    self.g -= other.g;
-    //    self.b -= other.b;
-    //}
-    //fn sub(&self, other: &Self) -> Self
-    //{
-    //    let mut out = self.clone();
-    //    out.r -= other.r;
-    //    out.g -= other.g;
-    //    out.b -= other.b;
-    //    out
-    //}
 }
 
-/// Iterate over the palette and sum each pixel colour by rgb,
-/// P(c) and c^2
 fn histogram(palette: &[RGB<u8>], space: &mut ColourSpace) -> ()
 {
-    // do everything in one iteration over the palette
     palette
         .iter()
         .map(|pixel| (pixel.round(), pixel))
@@ -210,14 +190,6 @@ fn cummulate_vals(space: &mut ColourSpace) -> ()
             }
         }
     }
-}
-
-#[derive(Copy, Clone)]
-enum Direction
-{
-    Red,
-    Green,
-    Blue,
 }
 
 fn combine_some(
@@ -319,35 +291,33 @@ fn variance(cube: &ColourCube, space: &ColourSpace) -> u64
         .for_each(|x| result.sub_inplace(space.index(x)));
 
     // shift by 7 just to make sure - easier than using f64 cmp
-
-    ((result.m2 - result.m.squared()) / result.count) as u64
+    ((result.m2 - result.m.squared()) << 7 / result.count) as u64
 }
 
 fn maximise(
     cube: &ColourCube,
-    //whole: &ColourEntry,
     space: &ColourSpace,
 ) -> Option<(ColourCube, ColourCube)>
 {
-    //we'll iterate over these directions and ranges
     let it = [
         (Direction::Red, cube.start.r..cube.end.r),
         (Direction::Green, cube.start.g..cube.end.g),
         (Direction::Blue, cube.start.b..cube.end.b),
     ];
-
-    // some vars for the results
     let mut max = 0.0;
     let mut cut = [[0u8, 0, 0]; 2];
 
-    // get the values for the whole cube
     let mut whole = ColourEntry::new();
     let (pos, neg) = all_indices(&cube);
     combine_some(&pos, &neg, &space, &mut whole);
 
+    if whole.count == 1 {
+        return None;
+    }
+
     for (direction, mut range) in it {
         if range.start == (SPACE_SIZE as u8 + 1) {
-            range = 0..range.end;
+            range.start = 0;
         } else {
             range.next();
         }
@@ -386,9 +356,7 @@ fn maximise(
     }
 
     // only cut if the value changed - the else clause is reached if all the
-    // points were in a unit section. This should prevent creating an empty
-    // cube
-
+    // points were in a unit section. This should prevent creating an empty cube
     if max > 0.0 {
         Some((
             ColourCube {
@@ -405,7 +373,7 @@ fn maximise(
     }
 }
 
-fn process_cuts(
+fn process_parts(
     part: ColourCube,
     queue: &mut Vec<(ColourCube, u64)>,
     space: &ColourSpace,
@@ -442,8 +410,8 @@ pub fn compress(palette: &[RGB<u8>]) -> Vec<RGB<u8>>
         match queue.pop() {
             Some((next, _)) => {
                 if let Some((part, other_part)) = maximise(&next, &space) {
-                    process_cuts(part, &mut queue, &space);
-                    process_cuts(other_part, &mut queue, &space);
+                    process_parts(part, &mut queue, &space);
+                    process_parts(other_part, &mut queue, &space);
                 } else {
                     queue.insert(0, (next, 0));
                 }
