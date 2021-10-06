@@ -407,7 +407,7 @@ fn process_cuts(
 }
 
 #[allow(dead_code)]
-fn compress(palette: &[RGB<u8>]) -> ()
+pub fn compress(palette: &[RGB<u8>]) -> Vec<RGB<u8>>
 {
     let mut space = ColourSpace::new();
     histogram(palette, &mut space);
@@ -444,4 +444,5 @@ fn compress(palette: &[RGB<u8>]) -> ()
             RGB::from_iter(entry.m.iter().map(|x| (x / entry.count) as u8))
         })
         .collect();
+    colours
 }
