@@ -31,13 +31,19 @@ fn wu_algo()
     if let Some(p) = &decoder.global_palette() {
         all_colours.extend(pallette_to_rgb(&p));
     }
-    while let Some(frame) = decoder.next_frame_info().unwrap() {
-        if let Some(p) = &frame.palette {
-            all_colours.extend(pallette_to_rgb(&p));
+    for i in 0..10 {
+        if let Some(frame) = decoder.read_next_frame().unwrap() {
+            if let Some(p) = &frame.palette {
+                println!("{}",i);
+                all_colours.extend(pallette_to_rgb(&p));
+                all_colours.dedup();
+            }
         }
     }
+    println!("ok");
+    println!("{}", all_colours.len());
     let colours = clustering::compress(&all_colours);
-    println!("{}, {}", all_colours.len(), colours.len())
+    println!("{}", colours.len());
 }
 
 fn pallette_to_rgb(palette: &[u8]) -> Vec<RGB<u8>>
