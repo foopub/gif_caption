@@ -393,7 +393,7 @@ fn process_parts(
 }
 
 #[allow(dead_code)]
-pub fn compress(palette: &[RGB<u8>]) -> Vec<RGB<u8>>
+pub fn compress(palette: &[RGB<u8>]) -> Vec<u8>
 {
     let mut space = ColourSpace::new();
     let cube = ColourCube {
@@ -420,15 +420,20 @@ pub fn compress(palette: &[RGB<u8>]) -> Vec<RGB<u8>>
         }
     }
 
-    let colours: Vec<RGB<u8>> = queue
+    let colours_flat: Vec<u8> = queue
         .iter()
         .map(|(cube, _)| {
             let mut entry = ColourEntry::new();
             let (pos, neg) = all_indices(&cube);
             combine_some(&pos, &neg, &space, &mut entry);
-            RGB::from_iter(entry.m.iter().map(|x| (x / entry.count) as u8))
+            entry
+                .m
+                .iter()
+                .map(move |x| (x / entry.count) as u8)
+                .collect::<Vec<u8>>()
         })
+        .flatten()
         .collect();
-
-    colours
+    
+    colours_flat
 }
