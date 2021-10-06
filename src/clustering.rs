@@ -33,7 +33,6 @@ impl ColourSpace
     }
     fn index(&self, rgb: &[u8; 3]) -> &ColourEntry
     {
-        //println!("ind: {:?}", rgb);
         &self.s[rgb[0] as usize][rgb[1] as usize][rgb[2] as usize]
     }
     fn index_mut(&mut self, rgb: &[u8; 3]) -> &mut ColourEntry
@@ -230,17 +229,11 @@ fn combine_some(
 {
     pos.iter()
         .filter(|x| !x.contains(&(SPACE_SIZE as u8 + 1)))
-        .for_each(|x| {
-            //println!("{:?}", x);
-            entry.add_some(space.index(x))
-        });
-    //println!("{}", entry.count);
+        .for_each(|x| entry.add_some(space.index(x)));
+
     neg.iter()
         .filter(|x| !x.contains(&(SPACE_SIZE as u8 + 1)))
-        .for_each(|x| {
-            //println!("{:?}", &(SPACE_SIZE as u8 + 1));
-            entry.sub_some(space.index(x))
-        });
+        .for_each(|x| entry.sub_some(space.index(x)));
 }
 
 fn base_indices(
@@ -326,8 +319,7 @@ fn variance(cube: &ColourCube, space: &ColourSpace) -> u64
         .for_each(|x| result.sub_inplace(space.index(x)));
 
     // shift by 7 just to make sure - easier than using f64 cmp
-    println!("{}, {}", result.m2, result.m.squared());
-    println!("{}", result.m2 - result.m.squared());
+
     ((result.m2 - result.m.squared()) / result.count) as u64
 }
 
@@ -352,7 +344,6 @@ fn maximise(
     let mut whole = ColourEntry::new();
     let (pos, neg) = all_indices(&cube);
     combine_some(&pos, &neg, &space, &mut whole);
-    //println!("{:?}, {:?}, {}", pos, neg, whole.count);
 
     for (direction, mut range) in it {
         if range.start == (SPACE_SIZE as u8 + 1) {
@@ -364,18 +355,12 @@ fn maximise(
         let mut base = ColourEntry::new();
         let (pos, neg) = base_indices(&cube, &direction);
         combine_some(&pos, &neg, &space, &mut base);
-        //println!("\n{}", space.s[29][31][18].count);
-        //println!("{}", space.s[29][23][18].count);
-        //println!("base count {}\n{:?}, {:?}\n", base.count, pos, neg);
 
-        //println!("{:?}", range);
         for i in range {
             let mut half = ColourEntry::new();
             let (pos, neg) = shift_indices(&cube, &direction, i);
             combine_some(&pos, &neg, &space, &mut half);
             half.sub_inplace(&base);
-
-            //println!("half count {}\n{:?}, {:?}\n", half.count, pos, neg);
 
             if half.count == 0 {
                 continue;
@@ -385,17 +370,13 @@ fn maximise(
                 break;
             }
 
-            //println!("half {}, whole {}", half.count, whole.count);
             // surely this can be optimised ???
             let anti_variance = {
                 let other_half = whole.clone().sub(&half);
-                //println!("half {}, other {}", half.count, other_half.count);
-                //println!("{}, {}", half.m.squared(), other_half.m.squared());
 
                 half.m.squared() as f64 / half.count as f64
                     + other_half.m.squared() as f64 / other_half.count as f64
             };
-            //println!("av {}\n", anti_variance);
 
             if anti_variance > max {
                 max = anti_variance;
@@ -407,7 +388,7 @@ fn maximise(
     // only cut if the value changed - the else clause is reached if all the
     // points were in a unit section. This should prevent creating an empty
     // cube
-    println!("{:?}", cut);
+
     if max > 0.0 {
         Some((
             ColourCube {
@@ -431,41 +412,38 @@ fn process_cuts(
 )
 {
     // unit volume cubes cannot be cut further
-    //if part.start.sub(part.end) == UNIT_RGB {
-    //    queue.insert(0, (part, 0));
-    //} else {
-    let v = variance(&part, space);
-    let (Ok(idx) | Err(idx)) = queue.binary_search_by(|(_, var)| var.cmp(&v));
-    queue.insert(idx, (part, v));
-    //}
+    if part.start.iter().zip(part.end.iter()).all(|(x, y)| {
+        x + 1 % (SPACE_SIZE + 2) as u8 == y % (SPACE_SIZE + 2) as u8
+    }) {
+        queue.insert(0, (part, 0));
+    } else {
+        let v = variance(&part, space);
+        let (Ok(idx) | Err(idx)) =
+            queue.binary_search_by(|(_, var)| var.cmp(&v));
+        queue.insert(idx, (part, v));
+    }
 }
 
 #[allow(dead_code)]
 pub fn compress(palette: &[RGB<u8>]) -> Vec<RGB<u8>>
 {
     let mut space = ColourSpace::new();
-    println!("starting");
-    histogram(palette, &mut space);
-    println!("hist done {}", space.s[0][0][0].count);
-    cummulate_vals(&mut space);
-    println!("cummulate done {}", space.s[31][31][31].count);
-
     let cube = ColourCube {
         start: RGB::from([SPACE_SIZE as u8 + 1; 3]),
         end: RGB::from([SPACE_SIZE as u8 - 1; 3]),
     };
-
     let mut queue = Vec::with_capacity(COLOURS);
     queue.push((cube, 1));
+
+    histogram(palette, &mut space);
+    cummulate_vals(&mut space);
 
     while queue.len() < COLOURS {
         match queue.pop() {
             Some((next, _)) => {
-                // println!("{}", queue.len());
                 if let Some((part, other_part)) = maximise(&next, &space) {
                     process_cuts(part, &mut queue, &space);
                     process_cuts(other_part, &mut queue, &space);
-                    println!("asdfasdf {}", queue.len());
                 } else {
                     queue.insert(0, (next, 0));
                 }
@@ -473,7 +451,6 @@ pub fn compress(palette: &[RGB<u8>]) -> Vec<RGB<u8>>
             None => break,
         }
     }
-    println!("cuts done");
 
     let colours: Vec<RGB<u8>> = queue
         .iter()
@@ -484,5 +461,6 @@ pub fn compress(palette: &[RGB<u8>]) -> Vec<RGB<u8>>
             RGB::from_iter(entry.m.iter().map(|x| (x / entry.count) as u8))
         })
         .collect();
+
     colours
 }
