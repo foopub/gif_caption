@@ -2,3 +2,4 @@ dist/
 fonts/
 target/
 index.html
+*.gif
