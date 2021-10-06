@@ -7,8 +7,6 @@
 // BKMS - best quality, slowest
 // Fast nearest neighbour - looks very promising too
 
-use std::iter::FromIterator;
-
 use rgb::RGB;
 
 const COLOURS: usize = 256;
@@ -393,7 +391,9 @@ fn process_parts(
 }
 
 #[allow(dead_code)]
-pub fn compress(palette: &[RGB<u8>]) -> Vec<u8>
+pub fn compress(
+    palette: &[RGB<u8>],
+) -> (Vec<u8>, [[[u8; SPACE_SIZE]; SPACE_SIZE]; SPACE_SIZE])
 {
     let mut space = ColourSpace::new();
     let cube = ColourCube {
@@ -420,9 +420,13 @@ pub fn compress(palette: &[RGB<u8>]) -> Vec<u8>
         }
     }
 
+    let mut indices = [[[0u8; SPACE_SIZE]; SPACE_SIZE]; SPACE_SIZE];
+
     let colours_flat: Vec<u8> = queue
         .iter()
-        .map(|(cube, _)| {
+        .enumerate()
+        .map(|(i, (cube, _))| {
+            mark([cube.start, cube.end], &mut indices, i as u8);
             let mut entry = ColourEntry::new();
             let (pos, neg) = all_indices(&cube);
             combine_some(&pos, &neg, &space, &mut entry);
@@ -434,6 +438,18 @@ pub fn compress(palette: &[RGB<u8>]) -> Vec<u8>
         })
         .flatten()
         .collect();
-    
-    colours_flat
+
+    (colours_flat, indices)
+}
+
+fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; 32]; 32]; 32], i: u8) -> ()
+{
+    let lambda = |x| (x + 1) % 34;
+    for r in lambda(p[0].r)..lambda(p[1].r) {
+        for g in lambda(p[0].g)..lambda(p[1].g) {
+            for b in lambda(p[0].b)..lambda(p[1].b) {
+                space[r as usize][g as usize][b as usize] = i;
+            }
+        }
+    }
 }
