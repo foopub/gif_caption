@@ -289,7 +289,6 @@ fn variance(cube: &ColourCube, space: &ColourSpace) -> u64
         .filter(|x| !x.contains(&(SPACE_SIZE as u8 + 1)))
         .for_each(|x| result.sub_inplace(space.index(x)));
 
-    // shift by 7 just to make sure - easier than using f64 cmp
     (result.m2 - result.m.squared() / result.count) as u64
 }
 
