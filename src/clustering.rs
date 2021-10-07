@@ -9,7 +9,7 @@
 
 use rgb::RGB;
 
-const COLOURS: usize = 256;
+const COLOURS: usize = 16;
 const ROUND_N: usize = 3;
 const SPACE_SIZE: usize = (255 >> ROUND_N) + 1;
 
@@ -21,6 +21,7 @@ enum Direction
     Blue,
 }
 
+#[derive(Debug)]
 struct ColourCube
 {
     end: RGB<u8>,
@@ -289,7 +290,7 @@ fn variance(cube: &ColourCube, space: &ColourSpace) -> u64
         .for_each(|x| result.sub_inplace(space.index(x)));
 
     // shift by 7 just to make sure - easier than using f64 cmp
-    ((result.m2 - result.m.squared()) << 7 / result.count) as u64
+    (result.m2 - result.m.squared() / result.count) as u64
 }
 
 fn maximise(

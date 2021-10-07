@@ -85,7 +85,7 @@ fn wu_algo()
                 indices[round(x[0])][round(x[1])][round(x[2])]
             );
         });
-        println!("{}", new_buff.len());
+        //println!("{}", new_buff.len());
 
         new_frame.buffer = new_buff.into();
         encoder.write_frame(&new_frame).unwrap();
