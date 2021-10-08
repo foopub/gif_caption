@@ -105,9 +105,11 @@ impl ColourEntry
     }
 }
 
-impl<T: Into<usize>> From<(&RGB<u8>, T, T)> for ColourEntry
+impl<T, U> From<(RGB<U>, T, T)> for ColourEntry
+where
+    usize: From<T> + From<U>,
 {
-    fn from(entry_tuple: (&RGB<u8>, T, T)) -> Self
+    fn from(entry_tuple: (RGB<U>, T, T)) -> Self
     {
         let rgb = entry_tuple.0;
         ColourEntry {
@@ -124,18 +126,15 @@ impl<T: Into<usize>> From<(&RGB<u8>, T, T)> for ColourEntry
 
 trait Wu
 {
+    type Size;
+    fn round(&self) -> [Self::Size; 3];
     fn squared(&self) -> usize;
 }
 
-trait Wu8
+impl Wu for RGB<u8>
 {
-    fn round(&self) -> [u8; 3];
-    fn squared(&self) -> usize;
-}
-
-impl Wu8 for RGB<u8>
-{
-    fn round(&self) -> [u8; 3]
+    type Size = u8;
+    fn round(&self) -> [Self::Size; 3]
     {
         [self.r >> ROUND_N, self.g >> ROUND_N, self.b >> ROUND_N]
     }
@@ -148,6 +147,11 @@ impl Wu8 for RGB<u8>
 
 impl Wu for RGB<usize>
 {
+    type Size = usize;
+    fn round(&self) -> [Self::Size; 3]
+    {
+        [self.r >> ROUND_N, self.g >> ROUND_N, self.b >> ROUND_N]
+    }
     fn squared(&self) -> usize
     {
         self.iter().map(|x| x.pow(2)).sum()
@@ -161,7 +165,7 @@ fn histogram(palette: &[RGB<u8>], space: &mut ColourSpace)
         .map(|pixel| (pixel.round(), pixel))
         .for_each(|(idx, p)| {
             let s = space.index_mut(&idx);
-            s.add_inplace(&ColourEntry::from((p, 1, p.squared())));
+            s.add_inplace(&ColourEntry::from((*p, 1, p.squared())));
         });
 }
 
@@ -292,17 +296,23 @@ fn variance(cube: &ColourCube, space: &ColourSpace) -> u64
     (result.m2 - result.m.squared() / result.count) as u64
 }
 
+fn variance2(entry: ColourEntry) -> f64
+{
+    entry.m2 as f64 - entry.m.squared() as f64 / entry.count as f64
+}
+
 fn maximise(
     cube: &ColourCube,
     space: &ColourSpace,
 ) -> Option<(ColourCube, ColourCube)>
 {
     let it = [
-        (Direction::Red, cube.start.r..cube.end.r),
-        (Direction::Green, cube.start.g..cube.end.g),
-        (Direction::Blue, cube.start.b..cube.end.b),
+        (Direction::Red, (cube.start.r + 1) % 34..cube.end.r),
+        (Direction::Green, (cube.start.g + 1) % 34..cube.end.g),
+        (Direction::Blue, (cube.start.b + 1) % 34..cube.end.b),
     ];
     let mut cut = [[34u8, 0, 0]; 2];
+    let (mut v1, mut v2) = (0.0, 0.0);
 
     let mut whole = ColourEntry::new();
     let (pos, neg) = all_indices(cube);
@@ -311,15 +321,9 @@ fn maximise(
     if whole.count == 1 {
         return None;
     }
-    let mut max = whole.m2 - whole.m.squared() / whole.count;
+    let mut max = (whole.m2 - whole.m.squared() / whole.count) as f64;
 
-    for (direction, mut range) in it {
-        if range.start == (SPACE_SIZE as u8 + 1) {
-            range.start = 0;
-        } else {
-            range.next();
-        }
-
+    for (direction, range) in it {
         let mut base = ColourEntry::new();
         let (pos, neg) = base_indices(cube, &direction);
         combine(&pos, &neg, space, &mut base);
@@ -342,11 +346,9 @@ fn maximise(
             let anti_variance = {
                 let other_half = whole.clone().sub(&half);
 
-                let a =
-                    half.m2 as f64 - half.m.squared() as f64 / half.count as f64;
-                let b = other_half.m2 as f64
-                    - other_half.m.squared() as f64 / other_half.count as f64;
-                (a - b).abs() as usize
+                v1 = variance2(half);
+                v2 = variance2(other_half);
+                (v1 - v2).abs()
             };
             //println!("{}", anti_variance);
 
