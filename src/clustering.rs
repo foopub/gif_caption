@@ -383,13 +383,13 @@ fn process_parts(
     if part.start.iter().zip(part.end.iter()).all(|(x, y)| {
         x + 1 % (SPACE_SIZE + 2) as u8 == y % (SPACE_SIZE + 2) as u8
     }) {
-        println!("Unit vol");
+        //println!("Unit vol");
         queue.insert(0, (part, 0));
     } else {
         let v = variance(&part, space);
         let (Ok(idx) | Err(idx)) =
             queue.binary_search_by(|(_, var)| var.cmp(&v));
-        println!("Put in idx {}, {}", idx, v);
+        //println!("Put in idx {}, {}", idx, v);
         queue.insert(idx, (part, v));
     }
 }
@@ -415,6 +415,7 @@ pub fn compress(
             Some((next, v)) => {
                 if v == 0 {
                     println!("There are less than {} colours", COLOURS);
+                    queue.push((next, 0));
                     break
                 }
                 if let Some((part, other_part)) = maximise(&next, &space) {
@@ -434,6 +435,7 @@ pub fn compress(
         .iter()
         .enumerate()
         .map(|(i, (cube, _))| {
+            //println!("{:?}", cube);
             mark([cube.start, cube.end], &mut indices, i as u8);
             let mut entry = ColourEntry::new();
             let (pos, neg) = all_indices(&cube);
@@ -453,6 +455,7 @@ pub fn compress(
 fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; 32]; 32]; 32], i: u8) -> ()
 {
     let lambda = |x| (x + 1) % 34;
+    println!("{:?}, {}", lambda(p[0].r)..lambda(p[1].r), i);
     for r in lambda(p[0].r)..lambda(p[1].r) {
         for g in lambda(p[0].g)..lambda(p[1].g) {
             for b in lambda(p[0].b)..lambda(p[1].b) {

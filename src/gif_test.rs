@@ -41,9 +41,15 @@ fn wu_algo()
         }
     }
 
-    println!("All colours: {}", all_colours.len());
     let (colours_flat, indices) = clustering::compress(&all_colours);
-    println!("Reduced palette: {}", colours_flat.len());
+    all_colours.dedup();
+    //let mut sorted = pallette_to_rgb(&colours_flat);
+    //sorted.sort_unstable();
+    //for palettes of 256 or less colours, these should be the same!
+    //println!("All colours:\n{:?}", all_colours);
+    //println!("Reduced palette:\n{:?}", sorted);
+    //println!("All colours:\n{:?}", all_colours.len());
+    //println!("Reduced palette:\n{:?}", colours_flat.len());
     drop(all_colours);
 
     let mut out_image = File::create("xresult.gif").unwrap();
@@ -81,9 +87,9 @@ fn wu_algo()
         let mut new_buff = Vec::with_capacity(triplets.len());
 
         triplets.iter().for_each(|x| {
-            new_buff.push(
-                indices[round(x[0])][round(x[1])][round(x[2])]
-            );
+            //let i = indices[round(x[0])][round(x[1])][round(x[2])];
+            //println!("{}, {:?}, {:?}", i, x, sorted[i as usize]);
+            new_buff.push(indices[round(x[0])][round(x[1])][round(x[2])]);
         });
         //println!("{}", new_buff.len());
 
