@@ -351,33 +351,42 @@ fn minimise(
     // only cut if the value changed - the else clause is reached if all the
     // points were in a unit section. This should prevent creating an empty cube
     if cut[0][0] != 34 {
-        let (Ok(idx) | Err(idx)) =
-            queue.binary_search_by(|(_, var)| var.cmp(&(v1 as usize)));
-        queue.insert(
-            idx,
-            (
-                ColourCube {
-                    start: cube.start,
-                    end: RGB::from(cut[1]),
-                },
-                v1 as usize,
-            ),
+        process_part(
+            ColourCube {
+                start: cube.start,
+                end: RGB::from(cut[1]),
+            },
+            v1,
+            queue,
         );
-        let (Ok(idx) | Err(idx)) =
-            queue.binary_search_by(|(_, var)| var.cmp(&(v2 as usize)));
-        queue.insert(
-            idx,
-            (
-                ColourCube {
-                    start: RGB::from(cut[0]),
-                    end: cube.end,
-                },
-                v2 as usize,
-            ),
+        process_part(
+            ColourCube {
+                start: RGB::from(cut[0]),
+                end: cube.end,
+            },
+            v2,
+            queue,
         );
     } else {
         queue.insert(0, (cube, 0));
     }
+}
+
+fn process_part(
+    cube: ColourCube,
+    v: f64,
+    queue: &mut Vec<(ColourCube, usize)>,
+) -> ()
+{
+    if cube.start.iter().zip(cube.end.iter()).all(|(x, y)| {
+        x + 1 % (SPACE_SIZE + 2) as u8 == y % (SPACE_SIZE + 2) as u8
+    }) {
+        queue.insert(0, (cube, 0));
+        return
+    }
+    let (Ok(idx) | Err(idx)) =
+        queue.binary_search_by(|(_, var)| var.cmp(&(v as usize)));
+    queue.insert(idx, (cube, v as usize));
 }
 
 #[allow(dead_code)]
