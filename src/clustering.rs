@@ -281,30 +281,16 @@ fn all_indices(cube: &ColourCube) -> ([[u8; 3]; 4], [[u8; 3]; 4])
     (pos, neg)
 }
 
-fn variance(cube: &ColourCube, space: &ColourSpace) -> u64
-{
-    let mut result = ColourEntry::new();
-    let (pos, neg) = all_indices(cube);
-    // like combine_some but also takes care of m2
-    pos.iter()
-        .filter(|x| !x.contains(&(SPACE_SIZE as u8 + 1)))
-        .for_each(|x| result.add_inplace(space.index(x)));
-    neg.iter()
-        .filter(|x| !x.contains(&(SPACE_SIZE as u8 + 1)))
-        .for_each(|x| result.sub_inplace(space.index(x)));
-
-    (result.m2 - result.m.squared() / result.count) as u64
-}
-
-fn variance2(entry: ColourEntry) -> f64
+fn variance(entry: &ColourEntry) -> f64
 {
     entry.m2 as f64 - entry.m.squared() as f64 / entry.count as f64
 }
 
-fn maximise(
-    cube: &ColourCube,
+fn minimise(
+    cube: ColourCube,
     space: &ColourSpace,
-) -> Option<(ColourCube, ColourCube)>
+    queue: &mut Vec<(ColourCube, usize)>,
+)
 {
     let it = [
         (Direction::Red, (cube.start.r + 1) % 34..cube.end.r),
@@ -315,22 +301,29 @@ fn maximise(
     let (mut v1, mut v2) = (0.0, 0.0);
 
     let mut whole = ColourEntry::new();
-    let (pos, neg) = all_indices(cube);
+    let (pos, neg) = all_indices(&cube);
     combine(&pos, &neg, space, &mut whole);
 
     if whole.count == 1 {
-        return None;
+        queue.insert(0, (cube, 0));
+        return;
     }
-    let mut max = (whole.m2 - whole.m.squared() / whole.count) as f64;
+
+    // There is a chance of overflow if the variance is 0, i.e. if
+    // m2 = m / count because m / count gets rounded up to an integer.
+    // However, the variance should never be 0 if count > 1 :)
+    // unless all the points are the same, but in that case m / count
+    // won't round, so I'm leaving it as is to test this hypothesis.
+    let mut min = (whole.m2 - whole.m.squared() / whole.count) as f64;
 
     for (direction, range) in it {
         let mut base = ColourEntry::new();
-        let (pos, neg) = base_indices(cube, &direction);
+        let (pos, neg) = base_indices(&cube, &direction);
         combine(&pos, &neg, space, &mut base);
 
         for i in range {
             let mut half = ColourEntry::new();
-            let (pos, neg) = shift_indices(cube, &direction, i);
+            let (pos, neg) = shift_indices(&cube, &direction, i);
             combine(&pos, &neg, space, &mut half);
             half.sub_inplace(&base);
 
@@ -343,17 +336,17 @@ fn maximise(
             }
 
             // surely this can be optimised ???
-            let anti_variance = {
+            let variance_diff = {
                 let other_half = whole.clone().sub(&half);
 
-                v1 = variance2(half);
-                v2 = variance2(other_half);
+                v1 = variance(&half);
+                v2 = variance(&other_half);
+
                 (v1 - v2).abs()
             };
-            //println!("{}", anti_variance);
 
-            if anti_variance < max {
-                max = anti_variance;
+            if variance_diff < min {
+                min = variance_diff;
                 cut = pos;
             }
         }
@@ -362,40 +355,42 @@ fn maximise(
     // only cut if the value changed - the else clause is reached if all the
     // points were in a unit section. This should prevent creating an empty cube
     if cut[0][0] != 34 {
-        Some((
+        process_part(
             ColourCube {
                 start: cube.start,
                 end: RGB::from(cut[1]),
             },
+            v1,
+            queue,
+        );
+        process_part(
             ColourCube {
                 start: RGB::from(cut[0]),
                 end: cube.end,
             },
-        ))
+            v2,
+            queue,
+        );
     } else {
-        None
+        queue.insert(0, (cube, 0));
     }
 }
 
-fn process_parts(
-    part: ColourCube,
-    queue: &mut Vec<(ColourCube, u64)>,
-    space: &ColourSpace,
+fn process_part(
+    cube: ColourCube,
+    v: f64,
+    queue: &mut Vec<(ColourCube, usize)>,
 )
 {
-    // unit volume cubes cannot be cut further
-    if part.start.iter().zip(part.end.iter()).all(|(x, y)| {
+    if cube.start.iter().zip(cube.end.iter()).all(|(x, y)| {
         x + 1 % (SPACE_SIZE + 2) as u8 == y % (SPACE_SIZE + 2) as u8
     }) {
-        //println!("Unit vol");
-        queue.insert(0, (part, 0));
-    } else {
-        let v = variance(&part, space);
-        let (Ok(idx) | Err(idx)) =
-            queue.binary_search_by(|(_, var)| var.cmp(&v));
-        //println!("Put in idx {}, {}", idx, v);
-        queue.insert(idx, (part, v));
+        queue.insert(0, (cube, 0));
+        return
     }
+    let (Ok(idx) | Err(idx)) =
+        queue.binary_search_by(|(_, var)| var.cmp(&(v as usize)));
+    queue.insert(idx, (cube, v as usize));
 }
 
 #[allow(dead_code)]
@@ -404,31 +399,19 @@ pub fn compress(
 ) -> (Vec<u8>, [[[u8; SPACE_SIZE]; SPACE_SIZE]; SPACE_SIZE])
 {
     let mut space = ColourSpace::new();
-    histogram(palette, &mut space);
-    cummulate_vals(&mut space);
-
-    let mut queue = Vec::with_capacity(COLOURS);
     let cube = ColourCube {
         start: RGB::from([SPACE_SIZE as u8 + 1; 3]),
         end: RGB::from([SPACE_SIZE as u8 - 1; 3]),
     };
+    let mut queue = Vec::with_capacity(COLOURS);
     queue.push((cube, 1));
+
+    histogram(palette, &mut space);
+    cummulate_vals(&mut space);
 
     while queue.len() < COLOURS {
         match queue.pop() {
-            Some((next, v)) => {
-                if v == 0 {
-                    println!("There are less than {} colours", COLOURS);
-                    queue.push((next, 0));
-                    break;
-                }
-                if let Some((part, other_part)) = maximise(&next, &space) {
-                    process_parts(part, &mut queue, &space);
-                    process_parts(other_part, &mut queue, &space);
-                } else {
-                    queue.insert(0, (next, 0));
-                }
-            }
+            Some((next, _)) => minimise(next, &space, &mut queue),
             None => break,
         }
     }
