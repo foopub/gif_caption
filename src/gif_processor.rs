@@ -44,8 +44,8 @@ enum Palette
 // just black and white
 fn process_palette(palette: Option<&[u8]>) -> (Palette, u8, u8)
 {
-    let (palette, min, max): (Palette, usize, usize) = match palette {
-        Some(palette) => {
+    let (palette, min, max): (Palette, usize, usize) =
+        if let Some(palette) = palette {
             // if a global palette exists, we search for the darkest
             // and lightest colours to use as black and white
             let sums = palette
@@ -61,16 +61,14 @@ fn process_palette(palette: Option<&[u8]>) -> (Palette, u8, u8)
             p[max * 3..max * 3 + 3].fill(255);
             //println!("Global palette");
             (Palette::GlobalPalette(p), min, max)
-        }
-        None => {
+        } else {
             // if no global palette, we can pass a local palette for
             // the first frame only
             let mut p = vec![0; 3];
             p.extend([255; 3]);
             //println!("Local palette");
             (Palette::LocalPalette(p), 0, 1)
-        }
-    };
+        };
     (palette, min.try_into().unwrap(), max.try_into().unwrap())
 }
 
@@ -196,20 +194,19 @@ pub fn caption<R: Read>(_name: &str, bytes: R, caption: &str) -> Vec<u8>
     options.set_color_output(ColorOutput::Indexed);
     let mut decoder = options.read_info(bytes).unwrap();
 
-    let h = decoder.height();
+    let old_h = decoder.height();
     let w = decoder.width();
 
     // new height!
-    let (new_h, pre, palette) = make_prepend(
+    let (h, pre, palette) = make_prepend(
         w,
-        h,
+        old_h,
         decoder.global_palette(),
         //min.try_into().unwrap(),
         //max.try_into().unwrap(),
         caption.to_string(),
     );
-    let h_shift = new_h - h;
-    let h = new_h;
+    let h_shift = h - old_h;
 
     //println!("w {}, h {}, new_h {}, pre {}", w, h, new_h, pre.len());
 
@@ -238,7 +235,7 @@ pub fn caption<R: Read>(_name: &str, bytes: R, caption: &str) -> Vec<u8>
             _ => {
                 // TODO if frame uses local palette, colours need to be adjusted
                 new_frame.height = h;
-                process_buffer(&w, &h, pre.as_slice(), &mut new_frame.buffer);
+                process_buffer(w, h, pre.as_slice(), &mut new_frame.buffer);
             }
         }
         previous_disposal = new_frame.dispose;
@@ -251,11 +248,11 @@ pub fn caption<R: Read>(_name: &str, bytes: R, caption: &str) -> Vec<u8>
 // All this does is take the old buffer, concat it with the prependix
 // create a new frame for that and move its buffer into the old one.
 // Other features may be added later.
-fn process_buffer(width: &u16, height: &u16, pre: &[u8], buffer: &mut Cow<[u8]>)
+fn process_buffer(width: u16, height: u16, pre: &[u8], buffer: &mut Cow<[u8]>)
 {
     let new = gif::Frame::from_indexed_pixels(
-        *width,
-        *height,
+        width,
+        height,
         &[pre, buffer].concat(),
         None,
     );

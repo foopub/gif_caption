@@ -122,7 +122,10 @@ impl Component for Model
                     onchange=self.link.callback(move |value| {
                         if let ChangeData::Files(files) = value{
                             //panics if cancel
-                            if files.length() != 0 {
+                            if files.length() == 0 {
+                                // clicked cancel
+                                Msg::NoOp
+                            } else {
                                 let result = files.item(0).unwrap();
                                 if result.type_() == "image/gif" {
                                     Msg::File(result)
@@ -130,9 +133,6 @@ impl Component for Model
                                     ConsoleService::log("Wrong file type");
                                     Msg::NoOp
                                 }
-                            } else {
-                                // clicked cancel
-                                Msg::NoOp
                             }
                         } else  {
                             Msg::NoOp
