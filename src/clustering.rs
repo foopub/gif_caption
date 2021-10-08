@@ -9,7 +9,7 @@
 
 use rgb::RGB;
 
-const COLOURS: usize = 16;
+const COLOURS: usize = 256;
 const ROUND_N: usize = 3;
 const SPACE_SIZE: usize = (255 >> ROUND_N) + 1;
 
@@ -200,11 +200,11 @@ fn combine_some(
 {
     pos.iter()
         .filter(|x| !x.contains(&(SPACE_SIZE as u8 + 1)))
-        .for_each(|x| entry.add_some(space.index(x)));
+        .for_each(|x| entry.add_inplace(space.index(x)));
 
     neg.iter()
         .filter(|x| !x.contains(&(SPACE_SIZE as u8 + 1)))
-        .for_each(|x| entry.sub_some(space.index(x)));
+        .for_each(|x| entry.sub_inplace(space.index(x)));
 }
 
 fn base_indices(
@@ -302,8 +302,7 @@ fn maximise(
         (Direction::Green, cube.start.g..cube.end.g),
         (Direction::Blue, cube.start.b..cube.end.b),
     ];
-    let mut max = 0.0;
-    let mut cut = [[0u8, 0, 0]; 2];
+    let mut cut = [[34u8, 0, 0]; 2];
 
     let mut whole = ColourEntry::new();
     let (pos, neg) = all_indices(&cube);
@@ -312,6 +311,7 @@ fn maximise(
     if whole.count == 1 {
         return None;
     }
+    let mut max = whole.m2 - whole.m.squared() / whole.count;
 
     for (direction, mut range) in it {
         if range.start == (SPACE_SIZE as u8 + 1) {
@@ -342,11 +342,13 @@ fn maximise(
             let anti_variance = {
                 let other_half = whole.clone().sub(&half);
 
-                half.m.squared() as f64 / half.count as f64
-                    + other_half.m.squared() as f64 / other_half.count as f64
+                let a = half.m2 as f64 - half.m.squared() as f64 / half.count as f64;
+                let b = other_half.m2 as f64 - other_half.m.squared() as f64 / other_half.count as f64;
+                (a - b).abs() as usize
             };
+            println!("{}", anti_variance);
 
-            if anti_variance > max {
+            if anti_variance < max {
                 max = anti_variance;
                 cut = pos;
             }
@@ -355,7 +357,7 @@ fn maximise(
 
     // only cut if the value changed - the else clause is reached if all the
     // points were in a unit section. This should prevent creating an empty cube
-    if max > 0.0 {
+    if cut[0][0] != 34 {
         Some((
             ColourCube {
                 start: cube.start,
@@ -381,11 +383,13 @@ fn process_parts(
     if part.start.iter().zip(part.end.iter()).all(|(x, y)| {
         x + 1 % (SPACE_SIZE + 2) as u8 == y % (SPACE_SIZE + 2) as u8
     }) {
+        println!("Unit vol");
         queue.insert(0, (part, 0));
     } else {
         let v = variance(&part, space);
         let (Ok(idx) | Err(idx)) =
             queue.binary_search_by(|(_, var)| var.cmp(&v));
+        println!("Put in idx {}, {}", idx, v);
         queue.insert(idx, (part, v));
     }
 }
