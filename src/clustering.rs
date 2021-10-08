@@ -150,7 +150,7 @@ impl Wu for RGB<usize>
 {
     fn squared(&self) -> usize
     {
-        self.iter().map(|x| x as usize ^ 2).sum()
+        self.iter().map(|x| x.pow(2)).sum()
     }
 }
 
@@ -173,7 +173,7 @@ fn cummulate_vals(space: &mut ColourSpace)
         for g in 0..SPACE_SIZE {
             let mut line = ColourEntry::new();
 
-            for (b, area)in areas.iter_mut().enumerate() {
+            for (b, area) in areas.iter_mut().enumerate() {
                 let point = space.s[r][g][b];
 
                 line.add_inplace(&point);
@@ -191,7 +191,7 @@ fn cummulate_vals(space: &mut ColourSpace)
     }
 }
 
-fn combine_some(
+fn combine(
     pos: &[[u8; 3]],
     neg: &[[u8; 3]],
     space: &ColourSpace,
@@ -306,7 +306,7 @@ fn maximise(
 
     let mut whole = ColourEntry::new();
     let (pos, neg) = all_indices(cube);
-    combine_some(&pos, &neg, space, &mut whole);
+    combine(&pos, &neg, space, &mut whole);
 
     if whole.count == 1 {
         return None;
@@ -322,12 +322,12 @@ fn maximise(
 
         let mut base = ColourEntry::new();
         let (pos, neg) = base_indices(cube, &direction);
-        combine_some(&pos, &neg, space, &mut base);
+        combine(&pos, &neg, space, &mut base);
 
         for i in range {
             let mut half = ColourEntry::new();
             let (pos, neg) = shift_indices(cube, &direction, i);
-            combine_some(&pos, &neg, space, &mut half);
+            combine(&pos, &neg, space, &mut half);
             half.sub_inplace(&base);
 
             if half.count == 0 {
@@ -402,15 +402,15 @@ pub fn compress(
 ) -> (Vec<u8>, [[[u8; SPACE_SIZE]; SPACE_SIZE]; SPACE_SIZE])
 {
     let mut space = ColourSpace::new();
+    histogram(palette, &mut space);
+    cummulate_vals(&mut space);
+
+    let mut queue = Vec::with_capacity(COLOURS);
     let cube = ColourCube {
         start: RGB::from([SPACE_SIZE as u8 + 1; 3]),
         end: RGB::from([SPACE_SIZE as u8 - 1; 3]),
     };
-    let mut queue = Vec::with_capacity(COLOURS);
     queue.push((cube, 1));
-
-    histogram(palette, &mut space);
-    cummulate_vals(&mut space);
 
     while queue.len() < COLOURS {
         match queue.pop() {
@@ -437,11 +437,10 @@ pub fn compress(
         .iter()
         .enumerate()
         .flat_map(|(i, (cube, _))| {
-            //println!("{:?}", cube);
             mark([cube.start, cube.end], &mut indices, i as u8);
             let mut entry = ColourEntry::new();
             let (pos, neg) = all_indices(cube);
-            combine_some(&pos, &neg, &space, &mut entry);
+            combine(&pos, &neg, &space, &mut entry);
             entry
                 .m
                 .iter()
@@ -456,10 +455,9 @@ pub fn compress(
 fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; 32]; 32]; 32], i: u8)
 {
     let lambda = |x| (x + 1) % 34;
-    println!("{:?}, {}", lambda(p[0].r)..lambda(p[1].r), i);
-    for r in lambda(p[0].r)..lambda(p[1].r) {
-        for g in lambda(p[0].g)..lambda(p[1].g) {
-            for b in lambda(p[0].b)..lambda(p[1].b) {
+    for r in lambda(p[0].r)..p[1].r + 1 {
+        for g in lambda(p[0].g)..p[1].g + 1 {
+            for b in lambda(p[0].b)..p[1].b + 1 {
                 space[r as usize][g as usize][b as usize] = i;
             }
         }
