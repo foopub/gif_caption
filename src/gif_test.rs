@@ -33,11 +33,11 @@ fn wu_algo()
     let mut all_colours = Vec::new();
 
     if let Some(p) = &decoder.global_palette() {
-        all_colours.extend(pallette_to_rgb(&p));
+        all_colours.extend(pallette_to_rgb(p));
     }
     while let Some(frame) = decoder.read_next_frame().unwrap() {
         if let Some(p) = &frame.palette {
-            all_colours.extend(pallette_to_rgb(&p));
+            all_colours.extend(pallette_to_rgb(p));
         }
     }
 

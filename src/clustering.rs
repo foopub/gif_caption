@@ -70,34 +70,34 @@ impl ColourEntry
         ColourEntry { m, count, m2 }
     }
 
-    fn add_some(&mut self, other: &Self) -> ()
+    fn add_some(&mut self, other: &Self)
     {
         //self.m.add_inplace(&other.m);
         self.m += other.m;
         self.count += other.count;
     }
 
-    fn add_inplace(&mut self, other: &Self) -> ()
+    fn add_inplace(&mut self, other: &Self)
     {
-        self.add_some(&other);
+        self.add_some(other);
         self.m2 += other.m2;
     }
 
-    fn sub_some(&mut self, other: &Self) -> ()
+    fn sub_some(&mut self, other: &Self)
     {
         self.m -= other.m;
         self.count -= other.count;
     }
 
-    fn sub_inplace(&mut self, other: &Self) -> ()
+    fn sub_inplace(&mut self, other: &Self)
     {
-        self.sub_some(&other);
+        self.sub_some(other);
         self.m2 -= other.m2;
     }
 
     fn sub(&self, other: &Self) -> Self
     {
-        let mut out = self.clone();
+        let mut out = *self;
         out.m -= other.m;
         out.count -= other.count;
         out.m2 -= other.m2;
@@ -154,7 +154,7 @@ impl Wu for RGB<usize>
     }
 }
 
-fn histogram(palette: &[RGB<u8>], space: &mut ColourSpace) -> ()
+fn histogram(palette: &[RGB<u8>], space: &mut ColourSpace)
 {
     palette
         .iter()
@@ -165,21 +165,21 @@ fn histogram(palette: &[RGB<u8>], space: &mut ColourSpace) -> ()
         });
 }
 
-fn cummulate_vals(space: &mut ColourSpace) -> ()
+fn cummulate_vals(space: &mut ColourSpace)
 {
     for r in 0..SPACE_SIZE {
-        let mut area = [ColourEntry::new(); SPACE_SIZE];
+        let mut areas = [ColourEntry::new(); SPACE_SIZE];
 
         for g in 0..SPACE_SIZE {
             let mut line = ColourEntry::new();
 
-            for b in 0..SPACE_SIZE {
+            for (b, area)in areas.iter_mut().enumerate() {
                 let point = space.s[r][g][b];
 
                 line.add_inplace(&point);
-                area[b].add_inplace(&line);
+                area.add_inplace(&line);
 
-                space.s[r][g][b] = area[b];
+                space.s[r][g][b] = *area;
 
                 //TODO is this good???
                 if r > 0 {
@@ -196,7 +196,7 @@ fn combine_some(
     neg: &[[u8; 3]],
     space: &ColourSpace,
     entry: &mut ColourEntry,
-) -> ()
+)
 {
     pos.iter()
         .filter(|x| !x.contains(&(SPACE_SIZE as u8 + 1)))
@@ -280,7 +280,7 @@ fn all_indices(cube: &ColourCube) -> ([[u8; 3]; 4], [[u8; 3]; 4])
 fn variance(cube: &ColourCube, space: &ColourSpace) -> u64
 {
     let mut result = ColourEntry::new();
-    let (pos, neg) = all_indices(&cube);
+    let (pos, neg) = all_indices(cube);
     // like combine_some but also takes care of m2
     pos.iter()
         .filter(|x| !x.contains(&(SPACE_SIZE as u8 + 1)))
@@ -305,8 +305,8 @@ fn maximise(
     let mut cut = [[34u8, 0, 0]; 2];
 
     let mut whole = ColourEntry::new();
-    let (pos, neg) = all_indices(&cube);
-    combine_some(&pos, &neg, &space, &mut whole);
+    let (pos, neg) = all_indices(cube);
+    combine_some(&pos, &neg, space, &mut whole);
 
     if whole.count == 1 {
         return None;
@@ -321,13 +321,13 @@ fn maximise(
         }
 
         let mut base = ColourEntry::new();
-        let (pos, neg) = base_indices(&cube, &direction);
-        combine_some(&pos, &neg, &space, &mut base);
+        let (pos, neg) = base_indices(cube, &direction);
+        combine_some(&pos, &neg, space, &mut base);
 
         for i in range {
             let mut half = ColourEntry::new();
-            let (pos, neg) = shift_indices(&cube, &direction, i);
-            combine_some(&pos, &neg, &space, &mut half);
+            let (pos, neg) = shift_indices(cube, &direction, i);
+            combine_some(&pos, &neg, space, &mut half);
             half.sub_inplace(&base);
 
             if half.count == 0 {
@@ -342,8 +342,10 @@ fn maximise(
             let anti_variance = {
                 let other_half = whole.clone().sub(&half);
 
-                let a = half.m2 as f64 - half.m.squared() as f64 / half.count as f64;
-                let b = other_half.m2 as f64 - other_half.m.squared() as f64 / other_half.count as f64;
+                let a =
+                    half.m2 as f64 - half.m.squared() as f64 / half.count as f64;
+                let b = other_half.m2 as f64
+                    - other_half.m.squared() as f64 / other_half.count as f64;
                 (a - b).abs() as usize
             };
             //println!("{}", anti_variance);
@@ -416,7 +418,7 @@ pub fn compress(
                 if v == 0 {
                     println!("There are less than {} colours", COLOURS);
                     queue.push((next, 0));
-                    break
+                    break;
                 }
                 if let Some((part, other_part)) = maximise(&next, &space) {
                     process_parts(part, &mut queue, &space);
@@ -438,7 +440,7 @@ pub fn compress(
             //println!("{:?}", cube);
             mark([cube.start, cube.end], &mut indices, i as u8);
             let mut entry = ColourEntry::new();
-            let (pos, neg) = all_indices(&cube);
+            let (pos, neg) = all_indices(cube);
             combine_some(&pos, &neg, &space, &mut entry);
             entry
                 .m
@@ -452,7 +454,7 @@ pub fn compress(
     (colours_flat, indices)
 }
 
-fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; 32]; 32]; 32], i: u8) -> ()
+fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; 32]; 32]; 32], i: u8)
 {
     let lambda = |x| (x + 1) % 34;
     println!("{:?}, {}", lambda(p[0].r)..lambda(p[1].r), i);

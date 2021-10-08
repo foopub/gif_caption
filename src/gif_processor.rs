@@ -20,7 +20,7 @@ where
     let (mut min_idx, mut max_idx) = (0, 0);
     let mut pos = 1;
     let mut min = max;
-    while let Some(x) = it.next() {
+    for x in it {
         if x > max {
             max_idx = pos;
             max = x;
@@ -150,7 +150,7 @@ fn make_prepend(
             //glyph.height,
         );
 
-        let x0 = x.clone();
+        let x0 = x;
         let w = w + x;
         let (_, bitmap) =
             &font.rasterize_indexed(glyph.key.glyph_index as usize, px);
@@ -185,7 +185,7 @@ fn make_prepend(
     (total_height + piece_height, canvas, palette)
 }
 
-pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
+pub fn caption<R: Read>(_name: &str, bytes: R, caption: &str) -> Vec<u8>
 {
     use gif::{ColorOutput, DecodeOptions, DisposalMethod, Encoder, Repeat};
 
@@ -238,7 +238,7 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
             _ => {
                 // TODO if frame uses local palette, colours need to be adjusted
                 new_frame.height = h;
-                process_buffer(&w, &h, &pre.as_slice(), &mut new_frame.buffer);
+                process_buffer(&w, &h, pre.as_slice(), &mut new_frame.buffer);
             }
         }
         previous_disposal = new_frame.dispose;
@@ -251,12 +251,7 @@ pub fn caption<R: Read>(_name: &String, bytes: R, caption: &String) -> Vec<u8>
 // All this does is take the old buffer, concat it with the prependix
 // create a new frame for that and move its buffer into the old one.
 // Other features may be added later.
-fn process_buffer(
-    width: &u16,
-    height: &u16,
-    pre: &[u8],
-    buffer: &mut Cow<[u8]>,
-) -> ()
+fn process_buffer(width: &u16, height: &u16, pre: &[u8], buffer: &mut Cow<[u8]>)
 {
     let new = gif::Frame::from_indexed_pixels(
         *width,
