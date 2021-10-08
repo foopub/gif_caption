@@ -436,7 +436,7 @@ pub fn compress(
     let colours_flat: Vec<u8> = queue
         .iter()
         .enumerate()
-        .map(|(i, (cube, _))| {
+        .flat_map(|(i, (cube, _))| {
             //println!("{:?}", cube);
             mark([cube.start, cube.end], &mut indices, i as u8);
             let mut entry = ColourEntry::new();
@@ -448,7 +448,6 @@ pub fn compress(
                 .map(move |x| (x / entry.count) as u8)
                 .collect::<Vec<u8>>()
         })
-        .flatten()
         .collect();
 
     (colours_flat, indices)
