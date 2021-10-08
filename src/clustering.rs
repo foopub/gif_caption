@@ -346,7 +346,7 @@ fn maximise(
                 let b = other_half.m2 as f64 - other_half.m.squared() as f64 / other_half.count as f64;
                 (a - b).abs() as usize
             };
-            println!("{}", anti_variance);
+            //println!("{}", anti_variance);
 
             if anti_variance < max {
                 max = anti_variance;
@@ -412,7 +412,11 @@ pub fn compress(
 
     while queue.len() < COLOURS {
         match queue.pop() {
-            Some((next, _)) => {
+            Some((next, v)) => {
+                if v == 0 {
+                    println!("There are less than {} colours", COLOURS);
+                    break
+                }
                 if let Some((part, other_part)) = maximise(&next, &space) {
                     process_parts(part, &mut queue, &space);
                     process_parts(other_part, &mut queue, &space);
