@@ -218,7 +218,7 @@ impl ColourSpace
     fn variance(&self, cube: &ColourCube) -> f64
     {
         let mut entry = ColourEntry::new();
-        let (pos, neg) = all_indices(&cube);
+        let (pos, neg) = all_indices(cube);
         pos.iter()
             .filter(|x| !x.as_ref().contains(&(SPACE_SIZE + 1)))
             .for_each(|x| entry.add_inplace(self.index(*x)));
@@ -248,7 +248,7 @@ impl ColourSpace
         let mut cut = [RGB::new(0_u8, 0, 0); 2];
 
         let mut whole = ColourEntry::new();
-        let (pos, neg) = all_indices(&cube);
+        let (pos, neg) = all_indices(cube);
         combine_some(&pos, &neg, self, &mut whole);
 
         if whole.count == 1 {
@@ -259,12 +259,12 @@ impl ColourSpace
 
         for (direction, range) in it {
             let mut base = ColourEntry::new();
-            let (pos, neg) = base_indices(&cube, direction);
+            let (pos, neg) = base_indices(cube, direction);
             combine_some(&pos, &neg, self, &mut base);
 
             for i in range {
                 let mut half = ColourEntry::new();
-                let (pos, neg) = shift_indices(&cube, direction, i);
+                let (pos, neg) = shift_indices(cube, direction, i);
                 combine_some(&pos, &neg, self, &mut half);
                 half.sub_inplace(&base);
 
