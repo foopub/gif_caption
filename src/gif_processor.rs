@@ -140,7 +140,7 @@ where
     canvas
 }
 
-fn pallette_to_rgb(palette: &[u8]) -> Vec<RGB<u8>>
+fn palette_to_rgb(palette: &[u8]) -> Vec<RGB<u8>>
 {
     palette
         .chunks(3)
@@ -168,13 +168,13 @@ pub fn caption<R: Read + Copy>(
             let mut global_palette = vec![255, 255, 255, 0, 0, 0];
 
             if let Some(p) = decoder.global_palette() {
-                all_colours.extend(pallette_to_rgb(p));
+                all_colours.extend(palette_to_rgb(p));
                 // if the gif has a global palette, overwrite the default
                 global_palette = p.to_vec();
             }
             while let Some(frame) = decoder.next_frame_info().unwrap() {
                 if let Some(p) = &frame.palette {
-                    all_colours.extend(pallette_to_rgb(p));
+                    all_colours.extend(palette_to_rgb(p));
                 }
             }
 
