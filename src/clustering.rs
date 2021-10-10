@@ -12,7 +12,7 @@ use std::ops::Shr;
 
 use rgb::RGB;
 
-const COLOURS: usize = 5;
+//const COLOURS: usize = 8;
 const ROUND_N: usize = 3;
 const SPACE_SIZE: u8 = (255 >> ROUND_N) + 1;
 const SPACE_USIZE: usize = SPACE_SIZE as usize;
@@ -40,9 +40,9 @@ struct ColourEntry
     pub m2: usize,
 }
 
-struct ColourSpace
+pub struct ColourSpace<T>
 {
-    s: [[[ColourEntry; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE],
+    s: [[[T; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE],
 }
 
 trait Wu
@@ -110,15 +110,17 @@ where
     }
 }
 
-impl ColourEntry
+impl Default for ColourEntry
 {
-    fn new() -> Self
+    fn default() -> Self
     {
         let m = RGB::new(0, 0, 0);
         let (count, m2) = (0, 0);
         ColourEntry { m, count, m2 }
     }
-
+}
+impl ColourEntry
+{
     fn add_some(&mut self, other: &Self)
     {
         //self.m.add_inplace(&other.m);
@@ -154,32 +156,36 @@ impl ColourEntry
     }
 }
 
-impl ColourSpace
+impl<U> ColourSpace<U>
+where U: Default + Copy
 {
-    fn new() -> ColourSpace
+    fn new() -> ColourSpace<U>
     {
-        let entry = ColourEntry::new();
+        let entry = U::default();
         let s = [[[entry; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE];
         ColourSpace { s }
     }
 
     // T here is usually u8, I am using these functions to easily index
     // into s with indices that aren't usize.
-    fn index<T>(&self, rgb: RGB<T>) -> &ColourEntry
+    pub fn index<T>(&self, rgb: RGB<T>) -> &U
     where
         usize: From<T>,
     {
         &self.s[usize::from(rgb.r)][usize::from(rgb.g)][usize::from(rgb.b)]
     }
 
-    fn index_mut<T>(&mut self, rgb: RGB<T>) -> &mut ColourEntry
+    fn index_mut<T>(&mut self, rgb: RGB<T>) -> &mut U
     where
         usize: From<T>,
     {
         &mut self.s[usize::from(rgb.r)][usize::from(rgb.g)][usize::from(rgb.b)]
     }
+}
 
-    fn histogram(&mut self, palette: &[RGB<u8>])
+impl ColourSpace<ColourEntry>
+{
+    fn histogram(&mut self, palette: Vec<RGB<u8>>)
     {
         palette.iter().map(|pixel| (pixel.round(), pixel)).for_each(
             |(idx, p)| {
@@ -192,10 +198,10 @@ impl ColourSpace
     fn cummulate_vals(&mut self)
     {
         for r in 0..SPACE_USIZE {
-            let mut areas = [ColourEntry::new(); SPACE_USIZE];
+            let mut areas = [ColourEntry::default(); SPACE_USIZE];
 
             for g in 0..SPACE_USIZE {
-                let mut line = ColourEntry::new();
+                let mut line = ColourEntry::default();
 
                 for (b, area) in areas.iter_mut().enumerate() {
                     let point = self.s[r][g][b];
@@ -217,7 +223,7 @@ impl ColourSpace
 
     fn variance(&self, cube: &ColourCube) -> f64
     {
-        let mut entry = ColourEntry::new();
+        let mut entry = ColourEntry::default();
         let (pos, neg) = all_indices(cube);
         pos.iter()
             .filter(|x| !x.as_ref().contains(&(SPACE_SIZE + 1)))
@@ -247,7 +253,7 @@ impl ColourSpace
         ];
         let mut cut = [RGB::new(0_u8, 0, 0); 2];
 
-        let mut whole = ColourEntry::new();
+        let mut whole = ColourEntry::default();
         let (pos, neg) = all_indices(cube);
         combine_some(&pos, &neg, self, &mut whole);
 
@@ -258,12 +264,12 @@ impl ColourSpace
         let mut max = 0.0;
 
         for (direction, range) in it {
-            let mut base = ColourEntry::new();
+            let mut base = ColourEntry::default();
             let (pos, neg) = base_indices(cube, direction);
             combine_some(&pos, &neg, self, &mut base);
 
             for i in range {
-                let mut half = ColourEntry::new();
+                let mut half = ColourEntry::default();
                 let (pos, neg) = shift_indices(cube, direction, i);
                 combine_some(&pos, &neg, self, &mut half);
                 half.sub_inplace(&base);
@@ -306,7 +312,7 @@ impl ColourSpace
 fn combine_some(
     pos: &[RGB<u8>],
     neg: &[RGB<u8>],
-    space: &ColourSpace,
+    space: &ColourSpace<ColourEntry>,
     entry: &mut ColourEntry,
 )
 {
@@ -423,8 +429,9 @@ fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; 32]; 32]; 32], i: u8)
 
 #[allow(dead_code)]
 pub fn compress(
-    palette: &[RGB<u8>],
-) -> (Vec<u8>, [[[u8; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE])
+    palette: Vec<RGB<u8>>,
+    n_colours: usize,
+) -> (Vec<u8>, ColourSpace<u8>)
 {
     let mut space = ColourSpace::new();
     space.histogram(palette);
@@ -435,7 +442,7 @@ pub fn compress(
         end: RGB::from([SPACE_SIZE - 1; 3]),
     };
 
-    let mut queue = Vec::with_capacity(COLOURS);
+    let mut queue = Vec::with_capacity(n_colours);
     queue.push((cube, 1));
     // This entire loop adds at most one element to the queue per
     // iter so it won't need to reallocate.
@@ -450,19 +457,19 @@ pub fn compress(
         } else {
             queue.insert(0, (next, 0));
         }
-        if queue.len() == COLOURS {
+        if queue.len() == n_colours {
             break;
         }
     }
 
-    let mut indices = [[[0_u8; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE];
+    let mut indices = ColourSpace::new();
 
     let colours_flat: Vec<u8> = queue
         .iter()
         .enumerate()
         .flat_map(|(i, (cube, _))| {
-            mark([cube.start, cube.end], &mut indices, i as u8);
-            let mut entry = ColourEntry::new();
+            mark([cube.start, cube.end], &mut indices.s, i as u8);
+            let mut entry = ColourEntry::default();
             let (pos, neg) = all_indices(cube);
             combine_some(&pos, &neg, &space, &mut entry);
             entry

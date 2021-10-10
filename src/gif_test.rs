@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::iter::FromIterator;
 
 use gif::{ColorOutput, DecodeOptions, Encoder, Repeat};
@@ -10,12 +10,20 @@ use crate::{clustering, gif_processor};
 #[test]
 fn sample_gifs()
 {
-    let input = File::open("test.gif").unwrap();
+    let mut buf = Vec::new();
+    {
+        let mut input = File::open("test.gif").unwrap();
+        input.read_to_end(&mut buf).unwrap();
+    }
     let mut out_image = File::create("result.gif").unwrap();
     let out = gif_processor::caption(
-        &String::new(),
-        input,
+        "test",
+        buf.as_slice(),
         &String::from("my descent into madness is complete"),
+        gif_processor::CompressColours::WuColours(255),
+        None,
+        None,
+        //Some(60.0),
     );
     out_image.write(&out).unwrap();
 }
@@ -23,11 +31,15 @@ fn sample_gifs()
 #[test]
 fn wu_algo()
 {
+    let mut buf = Vec::new();
+    {
+        let mut input = File::open("test.gif").unwrap();
+        input.read_to_end(&mut buf).unwrap();
+    }
     let mut decoder = {
-        let input = File::open("test.gif").unwrap();
         let mut options = DecodeOptions::new();
         options.set_color_output(ColorOutput::RGBA);
-        options.read_info(input).unwrap()
+        options.read_info(buf.as_slice()).unwrap()
     };
 
     let mut all_colours = Vec::new();
@@ -41,8 +53,8 @@ fn wu_algo()
         }
     }
 
-    let (colours_flat, indices) = clustering::compress(&all_colours);
-    all_colours.dedup();
+    let (colours_flat, indices) = clustering::compress(all_colours, 256);
+    //all_colours.dedup();
     //let mut sorted = pallette_to_rgb(&colours_flat);
     //sorted.sort_unstable();
     //for palettes of 256 or less colours, these should be the same!
@@ -50,7 +62,7 @@ fn wu_algo()
     //println!("Reduced palette:\n{:?}", sorted);
     //println!("All colours:\n{:?}", all_colours.len());
     //println!("Reduced palette:\n{:?}", colours_flat.len());
-    drop(all_colours);
+    //drop(all_colours);
 
     let mut out_image = File::create("xresult.gif").unwrap();
 
@@ -65,13 +77,10 @@ fn wu_algo()
 
     //need to repeat this
     let mut decoder = {
-        let input = File::open("test.gif").unwrap();
         let mut options = DecodeOptions::new();
         options.set_color_output(ColorOutput::RGBA);
-        options.read_info(input).unwrap()
+        options.read_info(buf.as_slice()).unwrap()
     };
-
-    let round = |x| x as usize >> 3;
 
     while let Some(old_frame) = decoder.read_next_frame().unwrap() {
         let mut new_frame = old_frame.clone();
@@ -89,7 +98,11 @@ fn wu_algo()
         triplets.iter().for_each(|x| {
             //let i = indices[round(x[0])][round(x[1])][round(x[2])];
             //println!("{}, {:?}, {:?}", i, x, sorted[i as usize]);
-            new_buff.push(indices[round(x[0])][round(x[1])][round(x[2])]);
+            new_buff.push(*indices.index(RGB::new(
+                x[0] >> 3,
+                x[1] >> 3,
+                x[2] >> 3,
+            )));
         });
         //println!("{}", new_buff.len());
 
