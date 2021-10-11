@@ -1,3 +1,4 @@
+use gif_processor::ColourCompression;
 use gloo_file::Blob;
 use yew::services::reader::{File, FileData, ReaderService, ReaderTask};
 use yew::services::ConsoleService;
@@ -5,6 +6,7 @@ use yew::web_sys::Url;
 use yew::{
     html, ChangeData, Component, ComponentLink, Html, InputData, ShouldRender,
 };
+use yew::virtual_dom::VNode;
 
 mod clustering;
 mod gif_processor;
@@ -16,20 +18,40 @@ pub enum Msg
 {
     File(File),
     Loaded(FileData),
-    Text(String),
+    Opt(Opts),
+    Compression,
     Start,
     Complete,
     NoOp,
 }
 
+pub enum Opts
+{
+    Caption(String),
+    Scale(f32),
+    FontSize(f32),
+    //Compression(bool),
+    NumberColours(u8),
+}
+
+#[derive(Default)]
+struct OptStruct
+{
+    caption: String,
+    scale: Option<f32>,
+    font_size: Option<f32>,
+    number_colours: ColourCompression,
+}
+
 pub struct Model
 {
-    link: ComponentLink<Model>,
-    filedata: FileData,
-    text: String,
+    link: ComponentLink<Self>,
+    filedata: Option<FileData>,
+    opts: OptStruct,
     pending: Vec<ReaderTask>, // no way to create default ReaderTask
     result: Vec<Blob>,
     url: String,
+    compression: VNode,
 }
 
 impl Component for Model
@@ -41,14 +63,12 @@ impl Component for Model
     {
         Self {
             link,
-            filedata: FileData {
-                name: String::new(),
-                content: Vec::new(),
-            }, // surely there's a better way???
-            text: String::default(),
+            filedata: None,
+            opts: OptStruct::default(),
             pending: Vec::with_capacity(1),
             result: Vec::with_capacity(1),
             url: String::default(),
+            compression: html!(),
         }
     }
 
@@ -69,26 +89,59 @@ impl Component for Model
                 )
                 .unwrap();
                 self.pending.push(task);
-                true
+                false
             }
-            Msg::Text(caption) => {
-                self.text = caption;
+            Msg::Opt(opt) => {
+                match opt {
+                    Opts::Caption(caption) => self.opts.caption = caption,
+                    Opts::Scale(scale) => {
+                        self.opts.scale = Some((scale - 1.0).clamp(1.1, 3.0))
+                    }
+                    Opts::FontSize(size) => {
+                        self.opts.font_size =
+                            if size > 0.0 { Some(size) } else { None }
+                    }
+                    Opts::NumberColours(num) => {
+                        self.opts.number_colours = ColourCompression::Wu(num.clamp(4,255))
+                    }
+                }
+                false
+            }
+            Msg::Compression => {
+                if self.compression.eq(&html!()) {
+                    self.compression = html!(
+                    <div class="form-div">
+                        <label>{ "Number of colours " }</label>
+                        <input
+                            type="number" placeholder="auto"
+                            oninput=self.link.callback(|e: InputData| {
+                                Msg::Opt(Opts::NumberColours(e.value.parse()
+                                                        .unwrap_or(255)))
+                            })
+                        />
+                    </div>
+                    );
+                } else {
+                    self.compression = html!();
+                    self.opts.number_colours = ColourCompression::None;
+                }
                 true
             }
             Msg::Loaded(filedata) => {
-                self.filedata = filedata;
+                self.filedata = Some(filedata);
                 self.pending.clear();
                 true
             }
             Msg::Start => {
                 self.result.clear();
+                let filedata = self.filedata.as_ref().unwrap();
                 let processed = gif_processor::caption(
-                    &self.filedata.name,
-                    self.filedata.content.as_slice(),
-                    &self.text,
-                    gif_processor::ColourCompression::None,
-                    None,
-                    None,
+                    &filedata.name,
+                    filedata.content.as_slice(),
+                    &self.opts.caption,
+                    self.opts.number_colours,
+                    self.opts.scale,
+                    self.opts.font_size,
                 );
                 let blob = Blob::new_with_options(
                     processed.as_slice(),
@@ -96,7 +149,7 @@ impl Component for Model
                 );
                 self.result.push(blob);
                 self.link.callback(|_| Msg::Complete).emit(());
-                true
+                false
             }
             Msg::Complete => {
                 ConsoleService::log("Done");
@@ -119,36 +172,75 @@ impl Component for Model
         html! {
             <div>
             <div>
-                <label>{ "Upload gif: " }</label>
-                <input
-                    type="file"
-                    onchange=self.link.callback(move |value| {
-                        if let ChangeData::Files(files) = value{
-                            //panics if cancel
-                            if files.length() == 0 {
-                                // clicked cancel
-                                Msg::NoOp
-                            } else {
-                                let result = files.item(0).unwrap();
-                                if result.type_() == "image/gif" {
-                                    Msg::File(result)
-                                } else {
-                                    ConsoleService::log("Wrong file type");
-                                    Msg::NoOp
+                <form>
+                <div class="form-div">
+                    <label>{ "Upload gif: " }</label>
+                    <input
+                        type="file"
+                        onchange=self.link.callback(move |value| {
+                            if let ChangeData::Files(files) = value{
+                                if files.length() > 0 {
+                                    let result = files.item(0).unwrap();
+                                    if result.type_() == "image/gif" {
+                                        return Msg::File(result)
+                                    } else {
+                                        ConsoleService::log("Wrong file type");
+                                    }
                                 }
                             }
-                        } else  {
-                            Msg::NoOp
-                        }
-                    })
-                />
-                <label>{ "Caption" }</label>
-                <input
-                    type="text" id="caption" name="caption"
-                    oninput=self.link.callback(|e: InputData| Msg::Text(e.value))/>
-                <input
-                    type="button" value="Submit"
-                    onclick=self.link.callback(|_| Msg::Start)/>
+                            return Msg::NoOp
+                        })
+                    />
+                </div>
+
+                <div class="form-div">
+                    <label>{ "Caption" }</label>
+                    <input
+                        type="text" id="caption" name="caption"
+                        oninput=self.link.callback(|e: InputData| {
+                            Msg::Opt(Opts::Caption(e.value))
+                        })
+                    />
+                </div>
+
+                <div class="form-div">
+                    <label>{ "Scale" }</label>
+                    <input
+                        type="number" step="0.05" min="0" max="3"
+                        oninput=self.link.callback(|e: InputData| {
+                            Msg::Opt(Opts::Scale(e.value.parse().unwrap_or(1.3)))
+                        })
+                    />
+                </div>
+
+                <div class="form-div">
+                    <label>{ "Font size" }</label>
+                    <input
+                        type="number" placeholder="auto"
+                        oninput=self.link.callback(|e: InputData| {
+                            Msg::Opt(Opts::FontSize(e.value.parse()
+                                                    .unwrap_or(-1.0)))
+                        })
+                    />
+                </div>
+
+                <div class="form-div">
+                    <label>{ "Colour compression" }</label>
+                    <input type="checkbox"
+                    onclick=self.link.callback(|_| Msg::Compression)
+                    />
+                </div>
+
+                { self.compression.clone() }
+
+                <div class="form-div">
+                    <input
+                        type="button" value="Submit"
+                        disabled=self.filedata.is_none()
+                        onclick=self.link.callback(|_| Msg::Start)/>
+                </div>
+
+                </form>
             </div>
             <div>
             <img src={ self.url.to_string() } />

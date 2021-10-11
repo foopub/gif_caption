@@ -13,12 +13,20 @@ use rgb::RGB;
 const SCALE: f32 = 0.3;
 
 #[allow(dead_code)]
+#[derive(Clone, Copy)]
 pub enum ColourCompression
 {
     // Wu with number of colours
     Wu(u8),
-    //NQSpeed(u8),   // speed
     None,
+}
+
+impl Default for ColourCompression
+{
+    fn default() -> Self
+    {
+        Self::None
+    }
 }
 
 #[allow(dead_code)]
@@ -244,7 +252,7 @@ pub fn caption<R: Read + Copy>(
 
         let piece = match &indexer {
             Indexer::Wu(indexer) => {
-                make_piece(w, piece_height, px, |x| indexer([x; 3]), caption)
+                make_piece(w, piece_height, px, |x| indexer([255-x; 3]), caption)
             }
             Indexer::Deduped(indexer) => {
                 make_piece(w, piece_height, px, indexer, caption)

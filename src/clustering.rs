@@ -157,7 +157,8 @@ impl ColourEntry
 }
 
 impl<U> ColourSpace<U>
-where U: Default + Copy
+where
+    U: Default + Copy,
 {
     fn new() -> ColourSpace<U>
     {
