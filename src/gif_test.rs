@@ -16,7 +16,7 @@ fn sample_gifs()
         "test",
         buf.as_slice(),
         &String::from("my descent into madness is complete"),
-        gif_processor::CompressColours::WuColours(255),
+        gif_processor::ColourCompression::Wu(255),
         None,
         None,
         //Some(60.0),

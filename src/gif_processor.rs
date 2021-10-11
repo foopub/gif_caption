@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+//use std::borrow::Cow;
 //use std::convert::TryInto;
 use std::io::Read;
 
@@ -10,13 +10,24 @@ use fontdue::{Font, FontSettings};
 use gif::{ColorOutput, DecodeOptions, DisposalMethod, Encoder, Repeat};
 use rgb::RGB;
 
-const SCALE: f32 = 1.3;
+const SCALE: f32 = 0.3;
 
 #[allow(dead_code)]
-pub enum CompressColours
+pub enum ColourCompression
 {
-    WuColours(u8), // number of colours
-    NQSpeed(u8),   // speed
+    // Wu with number of colours
+    Wu(u8),
+    //NQSpeed(u8),   // speed
+    None,
+}
+
+#[allow(dead_code)]
+enum Indexer
+{
+    // Wu indexer from rgb
+    Wu(Box<dyn Fn([u8; 3]) -> u8>),
+    // Deduped old idx to new idx
+    Deduped(Box<dyn Fn(u8) -> u8>),
     None,
 }
 
@@ -124,8 +135,7 @@ where
             if y > (piece_height - 1).into() {
                 break;
             }
-            // get x, y coordinate and draw black/white pixel...
-            // TODO add grayscale and potentially colour
+            // get x, y coordinate and draw pixel...
             canvas[x + y * piece_width as usize] = palette_idx(*pixel);
 
             // advance x
@@ -148,193 +158,180 @@ fn palette_to_rgb(palette: &[u8]) -> Vec<RGB<u8>>
         .collect()
 }
 
+fn process_palatte<R>(
+    mut decoder: gif::Decoder<R>,
+    comprssion: ColourCompression,
+) -> (Vec<u8>, Indexer)
+where
+    //T: Fn(u8) -> u8,
+    R: Read + Copy,
+{
+    // default global palette is just black and white
+    let global_palette = decoder
+        .global_palette()
+        .unwrap_or(&[255, 255, 255, 0, 0, 0])
+        .to_vec();
+
+    if let ColourCompression::Wu(number) = comprssion {
+        let mut all_colours = palette_to_rgb(&global_palette);
+
+        while let Some(frame) = decoder.next_frame_info().unwrap() {
+            if let Some(p) = &frame.palette {
+                all_colours.extend(palette_to_rgb(p));
+            }
+        }
+
+        // if combined palette does not exceed number, it's better to do nothing
+        let mut unique = all_colours.clone();
+        unique.sort_unstable();
+        unique.dedup();
+
+        if unique.len() > number as usize {
+            drop(unique);
+            drop(global_palette);
+            let (p, i) = clustering::compress(all_colours, number as usize);
+            return (
+                p,
+                Indexer::Wu(Box::new(move |x| {
+                    *i.index(RGB::new(x[0] >> 3, x[1] >> 3, x[2] >> 3))
+                })),
+            );
+        }
+    }
+    //TODO if colour count is small enough, we can add black/white
+    //TODO global palette can often be dedupped
+    (global_palette.to_vec(), Indexer::None)
+}
+
+use crate::clustering;
+
 pub fn caption<R: Read + Copy>(
     _name: &str,
     bytes: R,
     caption: &str,
-    compress: CompressColours,
+    comprssion: ColourCompression,
     scale: Option<f32>,
     font_size: Option<f32>,
+    //smooth_font: bool,
 ) -> Vec<u8>
 {
-    let mut options = DecodeOptions::new();
-    options.set_color_output(ColorOutput::RGBA);
-    let mut decoder = options.read_info(bytes).unwrap();
-
-    let (global_palette, indexer) = {
-        if let CompressColours::WuColours(number) = compress {
-            let mut all_colours = Vec::new();
-            // default global palette is just black and white
-            let mut global_palette = vec![255, 255, 255, 0, 0, 0];
-
-            if let Some(p) = decoder.global_palette() {
-                all_colours.extend(palette_to_rgb(p));
-                // if the gif has a global palette, overwrite the default
-                global_palette = p.to_vec();
-            }
-            while let Some(frame) = decoder.next_frame_info().unwrap() {
-                if let Some(p) = &frame.palette {
-                    all_colours.extend(palette_to_rgb(p));
-                }
-            }
-
-            // if combined palette does not exceed number, there's nothing to do
-            let mut unique = all_colours.clone();
-            unique.sort_unstable();
-            unique.dedup();
-            if unique.len() < number as usize {
-                //TODO if colour count is small enough, we can add black/white
-                (global_palette, None)
-            } else {
-                drop(unique);
-                drop(global_palette);
-                let (p, i) =
-                    crate::clustering::compress(all_colours, number as usize);
-                (p, Some(i))
-            }
-        } else {
-            if let Some(p) = decoder.global_palette() {
-                (p.to_vec(), None)
-            } else {
-                (vec![255, 255, 255, 0, 0, 0], None)
-            }
-        }
-    };
+    let mut decoder_opts = DecodeOptions::new();
+    decoder_opts.set_color_output(ColorOutput::RGBA);
+    let decoder = decoder_opts.read_info(bytes).unwrap();
 
     let w = decoder.width();
+    let old_h = decoder.height();
 
-    let (h, pre) = {
-        // calculate all the dimensions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        // default extension is 30%
-        let old_h = decoder.height();
-        let piece_height =
-            (old_h as f32 * (scale.unwrap_or(SCALE) - 1.0)) as u16;
+    // global palette and optional indexer if compressed
+    let (global_palette, indexer) = process_palatte(decoder, comprssion);
 
+    let (h, piece) = {
+        let piece_height = (old_h as f32 * scale.unwrap_or(SCALE)) as u16;
         let h = old_h + piece_height;
 
+        // if a px_size is provided, we use that, otherwise we calculate it
+        // from the area per char available (tho it's better to use graphemes)
         let px = {
-            // if a px_size is provided, we use that
             if let Some(px) = font_size {
                 px
             } else {
-                let text_area = w as usize * piece_height as usize;
-                // only support chars, not graphemes for now;
                 let n_chars = caption.chars().count() as f32;
-                //test gif is 225x420 btw
+                let text_area = w as usize * piece_height as usize;
                 let area_per_char = text_area as f32 / n_chars;
-                // some arbitrary ratio
-                // area_per_char = area_per_char * (1.0 / CHAR_RATIO);
                 area_per_char.sqrt() as f32
             }
         };
 
-        let pre = if let Some(idx) = &indexer {
-            make_piece(
-                w,
-                piece_height,
-                px,
-                |x| *idx.index(RGB::from([(255 - x) >> 3; 3])),
-                caption,
-            )
-        } else {
-            let (black, white) = minmax_ids(
-                // sum chunks of 3 to get the absolute brightness
-                global_palette
-                    .chunks(3)
-                    .map(|x| x.iter().map(|y| *y as usize).sum::<usize>()),
-            );
-            make_piece(
-                w,
-                piece_height,
-                px,
-                |x| if x > 30 { black as u8 } else { white as u8 },
-                caption,
-            )
+        let piece = match &indexer {
+            Indexer::Wu(indexer) => {
+                make_piece(w, piece_height, px, |x| indexer([x; 3]), caption)
+            }
+            Indexer::Deduped(indexer) => {
+                make_piece(w, piece_height, px, indexer, caption)
+            }
+            Indexer::None => {
+                let basic_indexer = {
+                    let (black, white) = minmax_ids(
+                        // sum chunks of 3 to get the absolute brightness
+                        global_palette.chunks(3).map(|x| {
+                            x.iter().map(|y| *y as usize).sum::<usize>()
+                        }),
+                    );
+                    move |x| if x > 30 { black as u8 } else { white as u8 }
+                };
+                make_piece(w, piece_height, px, basic_indexer, caption)
+            }
         };
 
-        (h, pre)
+        (h, piece)
     };
-    let shift_h = h - decoder.height();
+    let shift_h = h - old_h;
+    drop(old_h);
 
     let mut out_image = Vec::new();
-    // if the palette is global, use it, else we need to pass an empty vec
     let mut encoder =
         { Encoder::new(&mut out_image, w, h, &global_palette).unwrap() };
     encoder.set_repeat(Repeat::Infinite).unwrap();
 
-    // well... I learned about disposal methods smh
-    let mut previous_disposal = DisposalMethod::Background;
+    let mut decoder_opts = DecodeOptions::new();
 
-    let mut options = DecodeOptions::new();
+    match indexer {
+        Indexer::Wu(indexer) => {
+            decoder_opts.set_color_output(ColorOutput::RGBA);
+            let mut decoder = decoder_opts.read_info(bytes).unwrap();
 
-    if let Some(idx) = indexer {
-        options.set_color_output(ColorOutput::RGBA);
+            while let Some(old_frame) = decoder.read_next_frame().unwrap() {
+                let mut new_frame = old_frame.clone();
 
-        let mut decoder = options.read_info(bytes).unwrap();
+                let triplets: Vec<[u8; 3]> = old_frame
+                    .buffer
+                    .chunks_exact(4)
+                    .map(|x| [x[0], x[1], x[2]])
+                    .collect();
 
-        while let Some(old_frame) = decoder.read_next_frame().unwrap() {
-            let mut new_frame = old_frame.clone();
+                let mut new_buff = Vec::with_capacity(triplets.len());
 
-            new_frame.palette = None;
+                triplets.iter().for_each(|x| {
+                    new_buff.push(indexer(*x));
+                });
 
-            let triplets: Vec<[u8; 3]> = old_frame
-                .buffer
-                .chunks_exact(4)
-                .map(|x| [x[0], x[1], x[2]])
-                .collect();
-
-            let mut new_buff = Vec::with_capacity(triplets.len());
-
-            triplets.iter().for_each(|x| {
-                //let i = indices[round(x[0])][round(x[1])][round(x[2])];
-                //println!("{}, {:?}, {:?}", i, x, sorted[i as usize]);
-                new_buff.push(*idx.index(RGB::new(
-                    x[0] >> 3,
-                    x[1] >> 3,
-                    x[2] >> 3,
-                )));
-            });
-            //println!("{}", new_buff.len());
-
-            new_frame.height = h;
-            new_frame.buffer = [pre.clone(), new_buff].concat().into();
-            encoder.write_frame(&new_frame).unwrap();
-        }
-    } else {
-        let mut decoder = options.read_info(bytes).unwrap();
-
-        while let Some(old_frame) = decoder.read_next_frame().unwrap() {
-            let mut new_frame = old_frame.clone();
-            // if the disposal method is not Keep, we need to re-add the piece
-            match previous_disposal {
-                DisposalMethod::Keep | DisposalMethod::Previous => {
-                    new_frame.top += shift_h;
-                }
-                _ => {
-                    // TODO if frame uses local palette, colours need to be
-                    // adjusted
-                    new_frame.height = h;
-                    process_indexed(w, h, pre.as_slice(), &mut new_frame.buffer);
-                }
+                new_frame.palette = None;
+                new_frame.height = h;
+                new_frame.buffer = [piece.clone(), new_buff].concat().into();
+                encoder.write_frame(&new_frame).unwrap();
             }
-            previous_disposal = new_frame.dispose;
-            encoder.write_frame(&new_frame).unwrap();
+        }
+        Indexer::Deduped(_) => todo!(),
+        Indexer::None => {
+            decoder_opts.set_color_output(ColorOutput::Indexed);
+            let mut decoder = decoder_opts.read_info(bytes).unwrap();
+
+            // well... I learned about disposal methods smh
+            let mut previous_disposal = DisposalMethod::Background;
+
+            while let Some(old_frame) = decoder.read_next_frame().unwrap() {
+                let mut new_frame = old_frame.clone();
+
+                // if the disposal method is not Keep, we need to re-add piece
+                match previous_disposal {
+                    DisposalMethod::Keep | DisposalMethod::Previous => {
+                        new_frame.top += shift_h;
+                    }
+                    _ => {
+                        // TODO if frame uses local palette, colours need to be
+                        // adjusted
+                        new_frame.height = h;
+                        new_frame.buffer =
+                            [piece.as_ref(), new_frame.buffer.as_ref()]
+                                .concat()
+                                .into();
+                    }
+                }
+                previous_disposal = new_frame.dispose;
+                encoder.write_frame(&new_frame).unwrap();
+            }
         }
     }
     drop(encoder);
     out_image
-}
-
-// All this does is take the old buffer, concat it with the prependix
-// create a new frame for that and move its buffer into the old one.
-// Other features may be added later.
-fn process_indexed(width: u16, height: u16, pre: &[u8], buffer: &mut Cow<[u8]>)
-{
-    let new = gif::Frame::from_indexed_pixels(
-        width,
-        height,
-        &[pre, buffer].concat(),
-        None,
-    );
-    *buffer = new.buffer;
 }

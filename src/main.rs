@@ -86,7 +86,7 @@ impl Component for Model
                     &self.filedata.name,
                     self.filedata.content.as_slice(),
                     &self.text,
-                    gif_processor::CompressColours::None,
+                    gif_processor::ColourCompression::None,
                     None,
                     None,
                 );
