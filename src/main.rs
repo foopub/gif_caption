@@ -95,7 +95,7 @@ impl Component for Model
                 match opt {
                     Opts::Caption(caption) => self.opts.caption = caption,
                     Opts::Scale(scale) => {
-                        self.opts.scale = Some((scale - 1.0).clamp(1.1, 3.0))
+                        self.opts.scale = Some((scale - 1.0).clamp(0.1, 3.0))
                     }
                     Opts::FontSize(size) => {
                         self.opts.font_size =
@@ -206,7 +206,7 @@ impl Component for Model
                 <div class="form-div">
                     <label>{ "Scale" }</label>
                     <input
-                        type="number" step="0.05" min="0" max="3"
+                        type="number" step="0.05" min="1.1" max="4"
                         oninput=self.link.callback(|e: InputData| {
                             Msg::Opt(Opts::Scale(e.value.parse().unwrap_or(1.3)))
                         })
