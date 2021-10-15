@@ -1,5 +1,3 @@
-//use std::borrow::Cow;
-//use std::convert::TryInto;
 use std::io::Read;
 
 use fontdue::layout::{
@@ -9,11 +7,13 @@ use fontdue::layout::{
 use fontdue::{Font, FontSettings};
 use gif::{ColorOutput, DecodeOptions, DisposalMethod, Encoder, Repeat};
 use rgb::RGB;
+use wu_quantization::compress;
+use yew::services::ConsoleService;
 
 const SCALE: f32 = 0.3;
 
 #[allow(dead_code)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ColourCompression
 {
     // Wu with number of colours
@@ -197,7 +197,7 @@ where
         if unique.len() > number as usize {
             drop(unique);
             drop(global_palette);
-            let (p, i) = clustering::compress(all_colours, number as usize);
+            let (p, i) = compress(all_colours, number as usize);
             return (
                 p,
                 Indexer::Wu(Box::new(move |x| {
@@ -211,16 +211,14 @@ where
     (global_palette.to_vec(), Indexer::None)
 }
 
-use crate::clustering;
-
 pub fn caption<R: Read + Copy>(
     _name: &str,
     bytes: R,
     caption: &str,
-    comprssion: ColourCompression,
+    compression: ColourCompression,
     scale: Option<f32>,
     font_size: Option<f32>,
-    //smooth_font: bool,
+    //smooth_font: bool, TODO
 ) -> Vec<u8>
 {
     let mut decoder_opts = DecodeOptions::new();
@@ -231,7 +229,15 @@ pub fn caption<R: Read + Copy>(
     let old_h = decoder.height();
 
     // global palette and optional indexer if compressed
-    let (global_palette, indexer) = process_palatte(decoder, comprssion);
+    let (global_palette, indexer) = process_palatte(decoder, compression);
+    //NOTE FOR SOME REASON THESE DIFFER! Browser result has much worse colours
+    if cfg!(target_family = "wasm") {
+        ConsoleService::log(&format!("{:?}", compression));
+        ConsoleService::log(&format!("{:?}", global_palette));
+    } else {
+        println!("{:?}", compression);
+        println!("{:?}", global_palette);
+    }
 
     let (h, piece) = {
         let piece_height = (old_h as f32 * scale.unwrap_or(SCALE)) as u16;
@@ -251,9 +257,13 @@ pub fn caption<R: Read + Copy>(
         };
 
         let piece = match &indexer {
-            Indexer::Wu(indexer) => {
-                make_piece(w, piece_height, px, |x| indexer([255-x; 3]), caption)
-            }
+            Indexer::Wu(indexer) => make_piece(
+                w,
+                piece_height,
+                px,
+                |x| indexer([255 - x; 3]),
+                caption,
+            ),
             Indexer::Deduped(indexer) => {
                 make_piece(w, piece_height, px, indexer, caption)
             }

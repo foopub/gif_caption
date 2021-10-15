@@ -15,8 +15,8 @@ fn sample_gifs()
     let out = gif_processor::caption(
         "test",
         buf.as_slice(),
-        &String::from("my descent into madness is complete"),
-        gif_processor::ColourCompression::Wu(255),
+        &String::from(" "),
+        gif_processor::ColourCompression::Wu(8),
         None,
         None,
         //Some(60.0),
