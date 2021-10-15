@@ -15,7 +15,6 @@
 
 //use std::iter::FromIterator;
 use std::ops::Shr;
-
 use rgb::RGB;
 
 //const COLOURS: usize = 8;
@@ -41,35 +40,35 @@ struct ColourCube
 #[derive(Copy, Clone, Debug)]
 struct ColourEntry
 {
-    pub m: RGB<usize>,
-    pub count: usize,
-    pub m2: usize,
+    pub m: RGB<u32>,
+    pub count: u32,
+    pub m2: u64,
 }
 
 pub struct ColourSpace<T>
 {
-    s: [[[T; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE],
+    s: Box<[[[T; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE]>,
 }
 
 trait Wu
 {
     fn round(&self) -> Self;
-    fn squared(&self) -> usize;
+    fn squared(&self) -> u64;
 }
 
 impl<T> Wu for RGB<T>
 where
     T: Shr<usize, Output = T> + Copy,
-    usize: From<T>,
+    u64: From<T>,
 {
     fn round(&self) -> Self
     {
         RGB::from((self.r >> ROUND_N, self.g >> ROUND_N, self.b >> ROUND_N))
     }
 
-    fn squared(&self) -> usize
+    fn squared(&self) -> u64
     {
-        self.iter().map(|x| (usize::from(x)).pow(2)).sum()
+        self.iter().map(|x| (u64::from(x)).pow(2)).sum()
     }
 }
 
@@ -97,11 +96,13 @@ impl From<[RGB<u8>; 2]> for ColourCube
     }
 }
 
-impl<T, U> From<(RGB<U>, T, T)> for ColourEntry
+impl<T, U, V> From<(RGB<U>, T, V)> for ColourEntry
 where
-    usize: From<T> + From<U>,
+    u32: From<T>,
+    u32: From<U>,
+    u64: From<V>,
 {
-    fn from(entry_tuple: (RGB<U>, T, T)) -> Self
+    fn from(entry_tuple: (RGB<U>, T, V)) -> Self
     {
         let rgb = entry_tuple.0;
         ColourEntry {
@@ -125,6 +126,7 @@ impl Default for ColourEntry
         ColourEntry { m, count, m2 }
     }
 }
+
 impl ColourEntry
 {
     fn add_some(&mut self, other: &Self)
@@ -169,20 +171,20 @@ where
     fn new() -> ColourSpace<U>
     {
         let entry = U::default();
-        let s = [[[entry; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE];
+        let s = Box::new([[[entry; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE]);
         ColourSpace { s }
     }
 
     // T here is usually u8, I am using these functions to easily index
     // into s with indices that aren't usize.
-    pub fn index<T>(&self, rgb: RGB<T>) -> &U
+    pub fn rgb_index<T>(&self, rgb: RGB<T>) -> &U
     where
         usize: From<T>,
     {
         &self.s[usize::from(rgb.r)][usize::from(rgb.g)][usize::from(rgb.b)]
     }
 
-    fn index_mut<T>(&mut self, rgb: RGB<T>) -> &mut U
+    fn rgb_index_mut<T>(&mut self, rgb: RGB<T>) -> &mut U
     where
         usize: From<T>,
     {
@@ -196,8 +198,8 @@ impl ColourSpace<ColourEntry>
     {
         palette.iter().map(|pixel| (pixel.round(), pixel)).for_each(
             |(idx, p)| {
-                let s = self.index_mut(idx);
-                s.add_inplace(&ColourEntry::from((*p, 1, p.squared())));
+                let s = self.rgb_index_mut(idx);
+                s.add_inplace(&ColourEntry::from((*p, 1u8, p.squared())));
             },
         );
     }
@@ -234,10 +236,10 @@ impl ColourSpace<ColourEntry>
         let (pos, neg) = all_indices(cube);
         pos.iter()
             .filter(|x| !x.as_ref().contains(&(SPACE_SIZE + 1)))
-            .for_each(|x| entry.add_inplace(self.index(*x)));
+            .for_each(|x| entry.add_inplace(self.rgb_index(*x)));
         neg.iter()
             .filter(|x| !x.as_ref().contains(&(SPACE_SIZE + 1)))
-            .for_each(|x| entry.sub_inplace(self.index(*x)));
+            .for_each(|x| entry.sub_inplace(self.rgb_index(*x)));
         //.for_each(|x| entry.sub_some(self.index(*x)));
         entry.m2 as f64 - entry.m.squared() as f64 / entry.count as f64
     }
@@ -325,11 +327,11 @@ fn combine_some(
 {
     pos.iter()
         .filter(|x| !x.as_ref().contains(&(SPACE_SIZE + 1)))
-        .for_each(|x| entry.add_some(space.index(*x)));
+        .for_each(|x| entry.add_some(space.rgb_index(*x)));
 
     neg.iter()
         .filter(|x| !x.as_ref().contains(&(SPACE_SIZE + 1)))
-        .for_each(|x| entry.sub_some(space.index(*x)));
+        .for_each(|x| entry.sub_some(space.rgb_index(*x)));
 }
 
 fn base_indices(
@@ -422,7 +424,7 @@ fn process_part(
     queue.insert(idx, (cube, variance as usize));
 }
 
-fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; 32]; 32]; 32], i: u8)
+fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE], i: u8)
 {
     let lambda = |x| (x + 1) % (SPACE_SIZE + 2);
     for r in lambda(p[0].r)..=p[1].r {

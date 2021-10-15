@@ -8,7 +8,6 @@ use fontdue::{Font, FontSettings};
 use gif::{ColorOutput, DecodeOptions, DisposalMethod, Encoder, Repeat};
 use rgb::RGB;
 use wu_quantization::compress;
-use yew::services::ConsoleService;
 
 const SCALE: f32 = 0.3;
 
@@ -113,7 +112,7 @@ where
         vec![palette_idx(0); piece_width as usize * piece_height as usize];
 
     // "write" text to the layout
-    layout.append(&[&font], &TextStyle::new(&text, px, 0));
+    layout.append(&[&font], &TextStyle::new(text, px, 0));
     //println!("Creating pre {:#?}", layout.glyphs());
 
     // now draw 🔫 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -201,7 +200,7 @@ where
             return (
                 p,
                 Indexer::Wu(Box::new(move |x| {
-                    *i.index(RGB::new(x[0] >> 3, x[1] >> 3, x[2] >> 3))
+                    *i.rgb_index(RGB::new(x[0] >> 3, x[1] >> 3, x[2] >> 3))
                 })),
             );
         }
@@ -230,14 +229,6 @@ pub fn caption<R: Read + Copy>(
 
     // global palette and optional indexer if compressed
     let (global_palette, indexer) = process_palatte(decoder, compression);
-    //NOTE FOR SOME REASON THESE DIFFER! Browser result has much worse colours
-    if cfg!(target_family = "wasm") {
-        ConsoleService::log(&format!("{:?}", compression));
-        ConsoleService::log(&format!("{:?}", global_palette));
-    } else {
-        println!("{:?}", compression);
-        println!("{:?}", global_palette);
-    }
 
     let (h, piece) = {
         let piece_height = (old_h as f32 * scale.unwrap_or(SCALE)) as u16;
@@ -284,7 +275,6 @@ pub fn caption<R: Read + Copy>(
         (h, piece)
     };
     let shift_h = h - old_h;
-    drop(old_h);
 
     let mut out_image = Vec::new();
     let mut encoder =

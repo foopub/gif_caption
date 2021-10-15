@@ -194,7 +194,7 @@ impl Component for Model
                                     }
                                 }
                             }
-                            return Msg::NoOp
+                            Msg::NoOp
                         })
                     />
                 </div>
