@@ -3,12 +3,13 @@
 // based on the C implementation, found here
 // https://gist.github.com/bert/1192520
 
+
 // !!!!!!!!!!!!!!!!!!!
 // TODO A normalisation function would be nice! Right now the colour space is
 // filled up linearly but many images only use a limited portion of the full
 // spectrum or have an otherwise uneven distribtion.
 //
-// A test - any image with N distinct colours should remain unchanged for 
+// A test - any image with N distinct colours should remain unchanged for
 // quantisation with n_colours >= N
 // !!!!!!!!!!!!!!!!!!!
 

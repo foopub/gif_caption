@@ -8,7 +8,6 @@ use yew::{
 };
 use yew::virtual_dom::VNode;
 
-mod clustering;
 mod gif_processor;
 
 #[cfg(test)]
@@ -94,7 +93,10 @@ impl Component for Model
             }
             Msg::Opt(opt) => {
                 match opt {
-                    Opts::Caption(caption) => self.opts.caption = caption,
+                    Opts::Caption(caption) => {
+                        self.opts.caption = caption;
+                        return true
+                    }
                     Opts::Scale(scale) => {
                         self.opts.scale = Some((scale - 1.0).clamp(0.1, 3.0))
                     }
@@ -103,7 +105,7 @@ impl Component for Model
                             if size > 0.0 { Some(size) } else { None }
                     }
                     Opts::NumberColours(num) => {
-                        self.opts.number_colours = ColourCompression::Wu(num.clamp(4,255))
+                        self.opts.number_colours = ColourCompression::Wu(num.clamp(4,255));
                     }
                 }
                 false
@@ -137,6 +139,7 @@ impl Component for Model
             Msg::Start => {
                 //self.result.clear();
                 let filedata = self.filedata.as_ref().unwrap();
+                ConsoleService::log(&format!("{:?}", self.opts.number_colours));
                 let processed = gif_processor::caption(
                     &filedata.name,
                     filedata.content.as_slice(),
@@ -239,7 +242,7 @@ impl Component for Model
                 <div class="form-div">
                     <input
                         type="button" value="Submit"
-                        disabled=self.filedata.is_none()
+                        disabled=self.filedata.is_none() || self.opts.caption.len().lt(&1)
                         onclick=self.link.callback(|_| Msg::Start)/>
                 </div>
 

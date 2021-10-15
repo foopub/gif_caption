@@ -126,6 +126,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "gif-caption"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "fontdue",
+ "gif",
+ "gloo-file",
+ "js-sys",
+ "rgb",
+ "wasm-bindgen",
+ "web-sys",
+ "wu-quantization",
+ "yew",
+]
+
+[[package]]
 name = "gloo"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -441,6 +457,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b77fdfd5a253be4ab714e4ffa3c49caf146b4de743e97510c0656cf90f1e8e"
 
 [[package]]
+name = "wu-quantization"
+version = "0.1.0"
+dependencies = [
+ "rgb",
+]
+
+[[package]]
 name = "yew"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -466,21 +489,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "yew-macro",
-]
-
-[[package]]
-name = "yew-app"
-version = "0.1.0"
-dependencies = [
- "byteorder",
- "fontdue",
- "gif",
- "gloo-file",
- "js-sys",
- "rgb",
- "wasm-bindgen",
- "web-sys",
- "yew",
 ]
 
 [[package]]
