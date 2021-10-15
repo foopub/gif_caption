@@ -48,8 +48,8 @@ pub struct Model
     link: ComponentLink<Self>,
     filedata: Option<FileData>,
     opts: OptStruct,
-    pending: Vec<ReaderTask>, // no way to create default ReaderTask
-    result: Vec<Blob>,
+    pending: Option<ReaderTask>, // no way to create default ReaderTask
+    result: Option<Blob>, // should bre replaced with Result?
     url: String,
     compression: VNode,
 }
@@ -65,8 +65,8 @@ impl Component for Model
             link,
             filedata: None,
             opts: OptStruct::default(),
-            pending: Vec::with_capacity(1),
-            result: Vec::with_capacity(1),
+            pending: None,// Vec::with_capacity(1),
+            result: None,
             url: String::default(),
             compression: html!(),
         }
@@ -76,7 +76,7 @@ impl Component for Model
     {
         match msg {
             Msg::File(file) => {
-                self.pending.clear();
+                //self.pending.clear();
                 ConsoleService::log(
                     format!("File size: {}", file.size()).as_str(),
                 );
@@ -88,7 +88,8 @@ impl Component for Model
                     self.link.callback(Msg::Loaded),
                 )
                 .unwrap();
-                self.pending.push(task);
+                //self.pending.push(task);
+                self.pending = Some(task);
                 false
             }
             Msg::Opt(opt) => {
@@ -129,11 +130,12 @@ impl Component for Model
             }
             Msg::Loaded(filedata) => {
                 self.filedata = Some(filedata);
-                self.pending.clear();
+                //self.pending.clear();
+                self.pending = None;
                 true
             }
             Msg::Start => {
-                self.result.clear();
+                //self.result.clear();
                 let filedata = self.filedata.as_ref().unwrap();
                 let processed = gif_processor::caption(
                     &filedata.name,
@@ -147,15 +149,16 @@ impl Component for Model
                     processed.as_slice(),
                     Some("image/gif"),
                 );
-                self.result.push(blob);
+                self.result = Some(blob);
                 self.link.callback(|_| Msg::Complete).emit(());
                 false
             }
             Msg::Complete => {
                 ConsoleService::log("Done");
-                let blob = &self.result[0];
-                self.url =
-                    Url::create_object_url_with_blob(blob.as_ref()).unwrap();
+                if let Some(blob) = &self.result {
+                    self.url =
+                        Url::create_object_url_with_blob(blob.as_ref()).unwrap();
+                }
                 true
             }
             Msg::NoOp => true,
