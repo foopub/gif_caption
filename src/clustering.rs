@@ -1,11 +1,16 @@
-// colours have 3 dimesions with weight
-// methods to try
-// Wu's - very fast, looks better than NQ
+// An implementation of Xiaolin Wu's colour quantisation method
 // https://doi.org/10.1016/B978-0-08-050754-5.50035-9
+// based on the C implementation, found here
+// https://gist.github.com/bert/1192520
+
+// !!!!!!!!!!!!!!!!!!!
+// TODO A normalisation function would be nice! Right now the colour space is
+// filled up linearly but many images only use a limited portion of the full
+// spectrum or have an otherwise uneven distribtion.
 //
-// BS-ATCQ - very good quality, medium speed
-// BKMS - best quality, slowest
-// Fast nearest neighbour - looks very promising too
+// A test - any image with N distinct colours should remain unchanged for 
+// quantisation with n_colours >= N
+// !!!!!!!!!!!!!!!!!!!
 
 //use std::iter::FromIterator;
 use std::ops::Shr;
