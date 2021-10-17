@@ -29,7 +29,7 @@ impl Default for ColourCompression
 }
 
 #[allow(dead_code)]
-enum Indexer
+pub enum Indexer
 {
     // Wu indexer from rgb
     Wu(Box<dyn Fn([u8; 3]) -> u8>),
@@ -157,7 +157,7 @@ where
     canvas
 }
 
-fn palette_to_rgb(palette: &[u8]) -> Vec<RGB<u8>>
+pub fn palette_to_rgb(palette: &[u8]) -> Vec<RGB<u8>>
 {
     palette
         .chunks(3)

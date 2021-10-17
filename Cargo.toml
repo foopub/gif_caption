@@ -12,7 +12,8 @@ wu-quantization = { path = "./wu-quantization" }
 yew = "0.18"
 wasm-bindgen = "0.2.76"
 fontdue = "0.5.2"
-gif = { path = "./image-gif" }
+#gif = { path = "./image-gif" }
+gif = "0.11.3"
 js-sys = "0.3.53"
 byteorder = "1.4.3"
 gloo-file = "0.1.0"
