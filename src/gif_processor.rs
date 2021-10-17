@@ -327,7 +327,11 @@ pub fn caption<R: Read + Copy>(
                     }
                     _ => {
                         // TODO if frame uses local palette, colours need to be
-                        // adjusted
+                        // adjusted... this is a pain because, for consistent results, every 
+                        // local palette needs to be processed to make sure it either has
+                        // black and white, or less than 255 colours. 
+                        //
+                        // Alternatively the piece can be made transparent?????
                         new_frame.height = h;
                         new_frame.buffer =
                             [piece.as_ref(), new_frame.buffer.as_ref()]

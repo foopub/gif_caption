@@ -3,7 +3,6 @@
 // based on the C implementation, found here
 // https://gist.github.com/bert/1192520
 
-
 // !!!!!!!!!!!!!!!!!!!
 // TODO A normalisation function would be nice! Right now the colour space is
 // filled up linearly but many images only use a limited portion of the full
@@ -15,6 +14,7 @@
 
 //use std::iter::FromIterator;
 use std::ops::Shr;
+
 use rgb::RGB;
 
 //const COLOURS: usize = 8;
@@ -30,6 +30,8 @@ enum Direction
     Blue,
 }
 
+/// A colour cube (really a cuboid) is defined by two points in the quantised
+/// colour space, which constitute the cuboid's opposite vertices.
 #[derive(Debug)]
 struct ColourCube
 {
@@ -45,6 +47,17 @@ struct ColourEntry
     pub m2: u64,
 }
 
+/// A struct that wraps the colour space initially quantized by segmenting
+/// into `SPACE_USIZE` equal parts in each colour dimension by bit shifting the
+/// colours. Each point represents a segment that is a subset closed on the
+/// lower side and open on the upper: i.e. coordinate r, g, 3 represents the
+/// space where b >> 3 belongs to [ 3 , 4 ), specifically 24 >= b > 32.
+///
+/// This differs slightly from Wu's approach where the set is closed on the
+/// upper end - i.e. r, g, 3 corresponds to b >> 3 in ( 2 , 3 ], and prevents
+/// the need from using an empty 0th coordinate. Instead, when needed, for the
+/// combinatoric summation, we use a special index `SPACE_USIZE + 1` to signal no
+/// operation for the cuboid containing it.
 pub struct ColourSpace<T>
 {
     s: Box<[[[T; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE]>,
@@ -424,7 +437,11 @@ fn process_part(
     queue.insert(idx, (cube, variance as usize));
 }
 
-fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE], i: u8)
+fn mark(
+    p: [RGB<u8>; 2],
+    space: &mut [[[u8; SPACE_USIZE]; SPACE_USIZE]; SPACE_USIZE],
+    i: u8,
+)
 {
     let lambda = |x| (x + 1) % (SPACE_SIZE + 2);
     for r in lambda(p[0].r)..=p[1].r {
@@ -436,7 +453,6 @@ fn mark(p: [RGB<u8>; 2], space: &mut [[[u8; SPACE_USIZE]; SPACE_USIZE]; SPACE_US
     }
 }
 
-#[allow(dead_code)]
 pub fn compress(
     palette: Vec<RGB<u8>>,
     n_colours: usize,

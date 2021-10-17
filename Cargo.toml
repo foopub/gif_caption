@@ -12,11 +12,17 @@ wu-quantization = { path = "./wu-quantization" }
 yew = "0.18"
 wasm-bindgen = "0.2.76"
 fontdue = "0.5.2"
-gif = "0.11.2"
+gif = { path = "./image-gif" }
 js-sys = "0.3.53"
 byteorder = "1.4.3"
 gloo-file = "0.1.0"
 rgb = "0.8"
+criterion = "0.3.5"
+png = "0.17.2"
+
+[[bench]]
+name = "rgb_frame_bench"
+harness = false
 
 [dependencies.web-sys]
 features = ["Blob", "Url"]
