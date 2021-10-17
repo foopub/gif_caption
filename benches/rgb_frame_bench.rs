@@ -1,7 +1,7 @@
 use std::fs;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use gif::{Encoder, Repeat, Frame};
+use criterion::{criterion_group, criterion_main, Criterion};
+use gif::{Encoder, Frame, Repeat};
 use png;
 
 const DIR: &str = "benches/samples";
@@ -11,7 +11,9 @@ fn default(c: &mut Criterion)
     let dir = fs::read_dir(DIR).expect("Cant'r read dir:\n{}");
     for path in dir {
         let path = path.expect("Can't read path:\n{}").path();
-        if path.extension().unwrap() != "png" { continue }
+        if path.extension().unwrap() != "png" {
+            continue;
+        }
 
         let mut reader = {
             let input = fs::File::open(&path).unwrap();
@@ -20,10 +22,9 @@ fn default(c: &mut Criterion)
         };
 
         let mut buf = vec![0; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut buf).unwrap();
 
         let (w, h, size) = {
-            let info = reader.next_frame(&mut buf).unwrap();
-            //let info = reader.info();
             // could use try_into().unwrap() but probably no need
             (info.width as u16, info.height as u16, info.buffer_size())
         };
@@ -34,13 +35,27 @@ fn default(c: &mut Criterion)
         };
         encoder.set_repeat(Repeat::Finite(0)).unwrap();
 
-        
-        c.bench_function("default", |b| b.iter(|| Frame::from_rgba(w, h, &mut buf)));
+        //println!("{}, {}, {}, {}", reader.output_buffer_size(), size, w, h);
+        let frame = match info.color_type {
+            png::ColorType::Rgb => {
+                c.bench_function("default", |b| {
+                    b.iter(|| Frame::from_rgb(w, h, &mut buf))
+                });
+                Frame::from_rgb(w, h, &mut buf[..size])
+            }
+            png::ColorType::Rgba => {
+                c.bench_function("default", |b| {
+                    b.iter(|| Frame::from_rgba(w, h, &mut buf))
+                });
+                Frame::from_rgba(w, h, &mut buf[..size])
+            }
+            c => {
+                println!("Frame has ColourType: {:?}", c);
+                continue;
+            }
+        };
 
-        let frame = Frame::from_rgba(w, h, &mut buf);
         encoder.write_frame(&frame).unwrap();
-        
-        println!("{}, {}, {}", size, w, h);
     }
 }
 
