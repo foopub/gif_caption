@@ -1,5 +1,5 @@
-use std::fs;
 use std::borrow::Cow;
+use std::fs;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use gif::{Encoder, Frame, Repeat};
@@ -32,7 +32,8 @@ fn rgb_frame(width: u16, height: u16, pixels: &mut [u8]) -> Frame<'static>
 {
     let (palette, indexer) = wu_compression(pixels, 256);
 
-    let triplets: Vec<[u8; 3]> = pixels.chunks_exact(3).map(|x| [x[0], x[1], x[2]]).collect();
+    let triplets: Vec<[u8; 3]> =
+        pixels.chunks_exact(3).map(|x| [x[0], x[1], x[2]]).collect();
 
     //this is useless
     let transparent = triplets.iter().find(|x| x[2] as usize > 1000);
@@ -56,7 +57,6 @@ fn rgb_frame(width: u16, height: u16, pixels: &mut [u8]) -> Frame<'static>
         todo!()
     }
 }
-
 
 fn default(c: &mut Criterion)
 {
@@ -90,18 +90,22 @@ fn default(c: &mut Criterion)
         //println!("{}, {}, {}, {}", reader.output_buffer_size(), size, w, h);
         let frame = match info.color_type {
             png::ColorType::Rgb => {
-                c.bench_function("default_rgb", |b| {
-                    b.iter(|| Frame::from_rgb(w, h, &mut buf))
-                });
-                c.bench_function("wu_algo_rgb", |b| {
-                    b.iter(|| rgb_frame(w, h, &mut buf))
-                });
+                c.bench_function(
+                    &format!("default_rgb, {:?}", path.file_name().unwrap()),
+                    |b| b.iter(|| Frame::from_rgb_speed(w, h, &mut buf, 30)),
+                );
+                c.bench_function(
+                    &format!("wu_algo_rgb, {:?}", path.file_name().unwrap()),
+                    |b| b.iter(|| rgb_frame(w, h, &mut buf)),
+                );
                 //Frame::from_rgb(w, h, &mut buf[..size])
                 rgb_frame(w, h, &mut buf[..size])
             }
             png::ColorType::Rgba => {
-                c.bench_function("default_rgba", |b| {
-                    b.iter(|| Frame::from_rgba(w, h, &mut buf))
+                c.bench_function(
+                    &format!("default_rgba, {:?}", path.file_name().unwrap()),
+                                 |b| {
+                    b.iter(|| Frame::from_rgba_speed(w, h, &mut buf, 30))
                 });
                 Frame::from_rgba(w, h, &mut buf[..size])
             }
